@@ -1,8 +1,5 @@
 
-from .tex_utils import b
-
-def htmlcolor(text: str):
-    return '\\cellcolor[HTML]{' + text + "}"
+from .tex_utils import htmlcolor
 
 
 def multirow(size: int, text: str, color: str = ''):

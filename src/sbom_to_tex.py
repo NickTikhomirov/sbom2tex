@@ -1,4 +1,4 @@
-from .sbom_lib import Component, Vulnerability
+from .sbom_lib import Component, Vulnerability, SAFE_RESOLUTIONS
 from .tex_utils import protect, b, box, join_multiline, url, ReportColors, in_human, in_small
 from .tex_table import *
 
@@ -58,34 +58,38 @@ def encode_vuln(vuln: Vulnerability, get_component):
         '\\strut{}$\\cdot$\\,\\seqsplit{' + protect(c.name) + '\\quad [' + protect(c.version)  + ']}' for c in components
     ]
 
+    cve_color = ReportColors.SeverityColor(grade.severity)
+    if vuln.verdict_stat in SAFE_RESOLUTIONS:
+        cve_color = ReportColors.VulnerabilityStatusColor(vuln.verdict_stat)
+
     return table([
         [
-            multicolumn(2, '|c|', protect(vuln.main_id)),
-            multicolumn(2, 'c|', protect(in_human(grade.severity) + ' (' + grade.method + ')')),
-            multicolumn(2, 'c|', protect(grade.score + ' (' + grade.method + ')')),
+            multicolumn(2, '|c|', protect(vuln.main_id), color=cve_color),
+            multicolumn(2, 'c|', protect(in_human(grade.severity) + ' (' + grade.method + ')'), color=ReportColors.SeverityColor(grade.severity)),
+            multicolumn(2, 'c|', protect(grade.score + ' (' + grade.method + ')'), color=ReportColors.SeverityColor(grade.severity)),
         ],
         [
-            multicolumn(2, '|c|', column('Identifiers', *map(in_small, map(protect, vuln.ids_)))),
+            multicolumn(2, '|c|', column('Identifiers', *map(in_small, map(protect, vuln.ids_))), color=ReportColors.GRAY_BACKGROUND.value),
             multicolumn(2, 'l|', free_text('0.5\\textwidth', in_small(protect(vuln.desc)))),
-            multicolumn(2, 'c|', column('CWEs', *map(protect, map(lambda x: f'CWE-{x}', vuln.cwes)))),
+            multicolumn(2, 'c|', column('CWEs', *map(protect, map(lambda x: f'CWE-{x}', vuln.cwes))), color=ReportColors.NEUTRAL_RED.value),
         ],
 
         [
-            multicolumn(3, '|c|', free_text('0.4\\textwidth', in_small('\\underline{Рекомендация:} ' + protect(vuln.recommendation)))),
+            multicolumn(3, '|c|', free_text('0.4\\textwidth', in_small('\\underline{Рекомендация:} ' + protect(vuln.recommendation))), color=ReportColors.NEUTRAL_RED.value),
             multicolumn(3, 'l|', in_small(free_text('9cm', join_multiline(
                 r'{\hfil{}{Затронуты:}\hfil{}}' if any(components_as_text) else 'Затронутые компоненты отсутствуют!',
                 *[box('\\linewidth', c) for c in components_as_text]
-            ))))
+            ))), color=ReportColors.LOW_ORANGE.value)
         ] if vuln.recommendation else [
             multicolumn(6, '|l|', box('0.95\\textwidth', join_multiline(
                 '\\strut{}' + box('0.95\\textwidth', 'Затронуты:', True) if any(components_as_text) else box('15cm', 'Затронутые компоненты отсутствуют!'),
                 *[box('0.95\\textwidth', c) for c in components_as_text]
-            )))
+            )), color=ReportColors.LOW_ORANGE.value)
         ],
 
         [
-            multicolumn(4, '|l|', free_text('0.7\\textwidth', 'Комментарий: ' + protect(vuln.verdict_desc))),
-            multicolumn(2, 'c|', in_human(vuln.verdict_stat)),
+            multicolumn(4, '|l|', free_text('0.7\\textwidth', 'Комментарий: ' + protect(vuln.verdict_desc)), color=ReportColors.VulnerabilityStatusColor(vuln.verdict_stat)),
+            multicolumn(2, 'c|', in_human(vuln.verdict_stat), color=ReportColors.VulnerabilityStatusColor(vuln.verdict_stat)),
         ],
     ], 6)
 

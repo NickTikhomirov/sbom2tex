@@ -4,17 +4,16 @@ from datetime import datetime
 from .sbom_lib import SBoM
 from .sbom_to_tex import encode_root
 from .tex_table import table
-from .tex_utils import protect, box
-
+from .tex_utils import protect, box, ReportColors, htmlcolor
 
 
 def decode_line(line: str, timestamp: str = None):
-    now = str(datetime.now())
+    now = str(datetime.now()).split('.')[0]
     timestamp = timestamp or 'Нет данных'
     if line == 't':
-        return 'SBoM сгенерирован: ' + timestamp
+        return 'SBoM: ' + timestamp
     if line == 'd':
-        return 'Отчёт сгенерирован: ' + now
+        return 'Отчёт: ' + now
     return line
 
 
@@ -29,20 +28,15 @@ def add_title_page(f: TextIO, name: str, lines: list[str]):
 
 	\vfill
 
-	\colorbox{grey}{
+	\colorbox{pnik}{
 		\parbox[t]{0.93\textwidth}{ % Outer full width box
 			\parbox[t]{0.91\textwidth}{ % Inner box for inner right text margin
-				\raggedleft % Right align the text
+				%\raggedleft  Right align the text
 				\fontsize{40pt}{70pt}\selectfont % Title font size, the first argument is the font size and the second is the line spacing, adjust depending on title length
 				\vspace{0.7cm} % Space between the start of the title and the top of the grey box
 				
-				\fontsize{30pt}{35pt}\selectfont{}\color{blue} \textbf{\textsc{""" + protect(name) + r"""}} \\""")
-
-    for line in lines:
-        f.write(r"""
-				\fontsize{25pt}{35pt}\selectfont{}\color{black} """ + protect(line))
-
-    f.write(r"""				
+				\fontsize{30pt}{35pt}\selectfont{}\color{black}{\textsc{""" + protect(name) + r"""}}
+				
 				\vspace{0.7cm} % Space between the end of the title and the bottom of the grey box
 			}
 		}
@@ -57,8 +51,13 @@ def add_title_page(f: TextIO, name: str, lines: list[str]):
 	\parbox[t]{0.93\textwidth}{ % Box to inset this section slightly
 		\raggedleft % Right align the text
 		\large % Increase the font size
-		{} % Extra space after name
-		
+		{} % Extra space after name""")
+
+    for line in lines:
+        f.write(r"""
+				\fontsize{25pt}{35pt}\selectfont{}\color{black} """ + protect(line) + '\n\n\n')
+
+    f.write(r"""
 		\hfill\rule{0.2\linewidth}{1pt}% Horizontal line, first argument width, second thickness
 	}
 
@@ -150,7 +149,7 @@ TOP = r'''
 
 \definecolor{grey}{rgb}{0.9,0.9,0.9} % Colour of the box surrounding the title
 
-
+''' + r'\definecolor{pnik}{rgb}{' + ','.join(ReportColors.HOT_PINK.to_float()) + '}' + r'''
 
 \setmainfont{Arial}
 

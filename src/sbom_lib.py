@@ -7,7 +7,12 @@ import json
 
 ALOT = 99999999999
 
-
+SAFE_RESOLUTIONS = [
+    "resolved",
+    "resolved_with_pedigree",
+    "not_affected",
+    "false_positive",
+]
 
 @dataclass
 class Dull:
