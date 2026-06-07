@@ -1,4 +1,6 @@
 
+from .tex_utils import b
+
 def htmlcolor(text: str):
     return '\\cellcolor[HTML]{' + text + "}"
 
@@ -43,3 +45,17 @@ def table(contents: list[list], signature: str | int):
 '''
     return result
 
+
+def column(first: str, *lines: str):
+    if len(lines) == 0:
+        return ''
+    return r'''
+\begin{tabular}{c}
+''' + ((r'\underline{' + first + r'}: \\') if first else '') + r'''
+''' + '\\\\'.join(line for line in lines) + r'''\\
+\end{tabular}
+'''
+
+
+def free_text(size: str, text: str):
+    return '\\begin{minipage}{' + size + '}\n\\strut{}' + text + '\\strut{}\n\\end{minipage}'

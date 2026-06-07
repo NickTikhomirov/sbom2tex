@@ -7,6 +7,8 @@ import json
 
 ALOT = 99999999999
 
+
+
 @dataclass
 class Dull:
     type_: str = ''
@@ -47,18 +49,6 @@ class Component:
         return self.gost_provided_by or self.reference_type in ['vcs', 'source-distribution']
 
     @property
-    def is_interesting(self):
-        return any((
-            self.forced_interesting,
-            self.gost_provided_by,
-            self.gost_security_function != 'no',
-            self.gost_attack_surface != 'no',
-            self.vulns,
-            self.type_ not in ['application', 'library', 'framework'],
-            not self.has_proper_src
-        ))
-
-    @property
     def langs_as_list(self):
         return list(map(str.strip, self.langs.split(',')))
 
@@ -85,7 +75,7 @@ class Component:
             gost_attack_surface=Component.Search(props, 'GOST:attack_surface'),
             gost_security_function=Component.Search(props, 'GOST:security_function'),
             gost_provided_by=Component.Search(props, 'GOST:provided_by'),
-            langs=Component.Search(props, 'GOST:source_langs'),
+            langs=Component.Search(props, 'GOST:source_langs') or '',
             manufacturer=j.get('manufacturer', dict()).get('name') or '',
             reference=Component.Search(references, 'vcs', 'type', 'url') or Component.Search(references, 'source-distribution', 'type', 'url'),
             reference_type=Component.Search(references, 'vcs', 'type', 'url', True) or Component.Search(references, 'source-distribution', 'type', 'url', True),
@@ -105,7 +95,7 @@ class VulnerabilityGrade:
     @staticmethod
     def FromJSON(j: dict):
         return VulnerabilityGrade(
-            score=j.get("score") or '',
+            score=str(j.get("score")) or '',
             method=j.get("method") or '',
             severity=j.get("severity") or '',
         )
@@ -127,6 +117,16 @@ class Vulnerability:
     def get_leading_grade(self) -> VulnerabilityGrade:
         return self.grades[-1]
 
+    @property
+    def main_id(self):
+        for i in self.ids_:
+            if i.startswith('CVE-'):
+                return i
+        for i in self.ids_:
+            if i.startswith('BDU-'):
+                return i
+        return self.ids_[0]
+
     @staticmethod
     def IdVectorFromJSON(j: dict):
         if not (refs := j.get('references')):
@@ -140,11 +140,11 @@ class Vulnerability:
             cwes=j.get('cwes') or [],
             desc=j.get('description') or j.get('detail') or '',
             grades=tuple(map(VulnerabilityGrade.FromJSON, j.get('ratings') or [])) or tuple([VulnerabilityGrade.Empty()]),
-            components=tuple(j.get("affects") or []),
+            components=tuple(str(a.get('ref')) or '' for a in (j.get("affects") or [])),
             own_bomref=j.get('bom-ref'),
             recommendation=j.get('recommendation') or j.get('workaround') or '',
-            verdict_desc=analysis.get('detail'),
-            verdict_stat=analysis.get('state'),
+            verdict_desc=analysis.get('detail') or '',
+            verdict_stat=analysis.get('state') or '',
             ids_=tuple(Vulnerability.IdVectorFromJSON(j) or [j.get('id') or 'NO ID'])
         )
 
@@ -276,7 +276,8 @@ def build_sbom_from_files(files, drop_types: list[str]):
                     continue
                 sbom.add_component(cmp)
             for edge in j.get('dependencies') or []:
-                sbom.add_edge(edge['ref'], edge['dependsOn'])
+                if edge.get('dependsOn'):
+                    sbom.add_edge(edge['ref'], edge['dependsOn'])
 
         for src in files:
             with open(src, 'r', encoding='utf-8') as f:
@@ -287,4 +288,20 @@ def build_sbom_from_files(files, drop_types: list[str]):
         sbom.update_depths()
         sbom.sort_vulns()
         return sbom
+
+
+@dataclass
+class ComponentEstimator:
+    provided_by_is_not_interesting: bool
+
+    def __call__(xelf, self):
+        return any((
+            self.forced_interesting,
+            self.gost_provided_by and not xelf.provided_by_is_not_interesting,
+            self.gost_security_function != 'no',
+            self.gost_attack_surface != 'no',
+            self.vulns,
+            self.type_ not in ['application', 'library', 'framework'],
+            not self.has_proper_src
+        ))
 

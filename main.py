@@ -17,6 +17,7 @@ def argparse_init():
     parser.add_argument('-o', '--output', default='.', type=Path, help='Directory to store result')
     parser.add_argument('-n', '--name', type=str, default='', help='Project main name (for title)')
     parser.add_argument('--split', type=int, default=0, help='Split threshold (0 for no split, >19 otherwise)')
+    parser.add_argument('--provided-by-is-not-interesting', action='store_true', help='For now all "GOST:provided_by" are considered worth mentioning. Use the flag to override.')
 
     parser.add_argument('--introspect-depth', type=int, default=1, help='For ')
     #parser.add_argument('--ignore-obom-depth', action='store_true', help='If set, depth will preserve same for components with types:' + ', '.join(DROP_OBOM))
@@ -52,6 +53,8 @@ if __name__ == '__main__':
             args.add_to_title = ["d"] + args.add_to_title
         #args.ignore_obom_depth = True
 
+    evaluator = sbom_lib.ComponentEstimator(args.provided_by_is_not_interesting)
+
     drop_types = (DROP_OBOM if args.no_obom else []) + (DROP_BUZZ if args.no_buzz else [])
     sbom = sbom_lib.build_sbom_from_files(args.input, drop_types)
 
@@ -78,7 +81,7 @@ if __name__ == '__main__':
             filenames += [component_filename, out_dir.joinpath(f'report_cve')]
 
         else:                                                # a lot of files
-            report_count = (len(sbom.vulnerabilities) * 1.0 / args.split).__ceil__().__int__() if args.split else 1
+            report_count = (len(sbom.vulnerabilities) * 1.0 / args.split).__ceil__() if args.split else 1
             cve_filename = lambda i: out_dir.joinpath(f'report_cve_{i}')
             filenames += [component_filename] + [cve_filename(i+1) for i in range(report_count)]
             common_desc_cve = lambda i: 'Это отчёт о уязвимостях проекта ' + args.name + f' (файл {i} из {report_count}). Сведения об компонентах приведены в отдельном отчёте. Разделение отчётов было осуществлено для повышения читаемости.'
@@ -109,7 +112,7 @@ if __name__ == '__main__':
     for cmp in sbom.iter_components():
         if cmp.depth > args.introspect_depth:
             continue
-        if not cmp.is_interesting:
+        if not evaluator(cmp):
             skipped += 1
             continue
         files[0].write(sbom_to_tex.encode_component(cmp))
@@ -119,7 +122,7 @@ if __name__ == '__main__':
     files[0].write('\n\\section{Транзитивные зависимости}\n\n')
     for cmp in sbom.iter_components():
         if cmp.depth > args.introspect_depth:
-            if not cmp.is_interesting:
+            if not evaluator(cmp):
                 skipped += 1
                 continue
             files[0].write(sbom_to_tex.encode_component(cmp))
@@ -129,6 +132,14 @@ if __name__ == '__main__':
     if skipped:
         files[0].write('\n\\section{Дополнительные сведения}\n\n')
         files[0].write('\\textit{Было пропущено ' + str(skipped) + ' компонентов, так как они не были сочтены достаточно примечательными для отображения в отчёте. Полные сведения о компонентах доступны в формате SBoM-файла, который рекомендуется запросить у авторов отчёта.}')
+
+    for file in files[1:]:
+        files[1].write('\n\\section{Уязвимости}\n\n')
+
+    for cve in sbom.vulnerabilities:
+        files[1].write(sbom_to_tex.encode_vuln(cve, sbom.components.get))
+        files[1].write(tex_utils.step())
+        files[1].write(tex_utils.step())
 
     for f in files:
         f.write(report_brand.BOTTOM)

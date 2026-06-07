@@ -40,8 +40,9 @@ class ReportColors(Enum):
 
 def protect(string: str | object):
     string = str(string)
-    string = string.replace('\\', '\\textbackslash')
-    string = string.replace('~', '\\texttildelow')
+    string = string.replace('\\', '\\textbackslash{}')
+    string = string.replace('~', '\\texttildelow{}')
+    string = string.replace('`', '\\textasciigrave{}')
     for symbol in '_#$&%"':
         string = string.replace(symbol, '\\' + symbol)
     return string
@@ -80,4 +81,7 @@ def join_multiline(*lines: str):
 def step():
     return '\n\\text{}\n'
 
+
+def in_small(text: str):
+    return '{\\small{}' + text + '}'
 

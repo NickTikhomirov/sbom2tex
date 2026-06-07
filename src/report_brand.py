@@ -71,6 +71,7 @@ def add_title_page(f: TextIO, name: str, lines: list[str]):
 
 
 def make_common_builder(sbom: SBoM):
+    provided_by = sbom.get_provided_by()
     tail = r'''
 
 \subsection{Корневой компонент проекта}
@@ -98,15 +99,15 @@ def make_common_builder(sbom: SBoM):
 
 \end{center}
 
-''' + r'''
+''' + (r'''
 
 \subsection{Источники компонентов (GOST:provided\_by)}
 
 \begin{itemize}
-''' + '\n'.join(f'    \\item {protect(kv[0])} ({protect(kv[1])} компонентов)' for kv in sbom.get_provided_by().items()) + r'''
+''' + '\n'.join(f'    \\item {protect(kv[0])} ({protect(kv[1])} компонентов)' for kv in provided_by.items()) + r'''
 \end{itemize}
 
-
+''' if sbom.get_provided_by() else '') + r'''
 
 
 '''
@@ -138,6 +139,7 @@ TOP = r'''
 \usepackage{fontspec}
 \usepackage{longtable}
 \usepackage{indentfirst}
+\usepackage{seqsplit}
 \usepackage[a4paper, left=30mm, top=20mm, right=10mm, bottom=20mm]{geometry}
  
 
