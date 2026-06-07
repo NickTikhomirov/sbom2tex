@@ -1,10 +1,31 @@
 
-def multirow(size: int, marker: str, text: str):
-    return r'\multirow{' + str(size) + '}{' + marker +'}{' + text + '}'
+def htmlcolor(text: str):
+    return '\\cellcolor[HTML]{' + text + "}"
 
 
-def multicolumn(size: int, text: str):
-    return r'\multicolumn{' + str(size) + '}{*}{' + text + '}'
+def multirow(size: int, text: str, color: str = ''):
+    if color:
+        text = htmlcolor(color) + text
+    return r'\multirow{' + str(size) + '}{*}{' + text + '}'
+
+
+def multicolumn(size: int, marker: str, text: str, color: str = ''):
+    if color:
+        text = htmlcolor(color) + text
+    return r'\multicolumn{' + str(size) + '}{' + marker + '}{' + text + '}'
+
+
+def __cell(a: str | tuple[str, str]):
+    color = ''
+    if type(a) == tuple:
+        color, a = a
+
+    if type(a) != str:
+        a = str(a)
+
+    if color:
+        return htmlcolor(color) + a
+    return a
 
 
 def table(contents: list[list], signature: str | int):
@@ -15,7 +36,7 @@ def table(contents: list[list], signature: str | int):
 \hline
 '''
     for line in contents:
-        result += ' & '.join(map(str, line)) + r'\\ \hline' + '\n'
+        result += ' & '.join(map(__cell, line)) + r'\\ \hline' + '\n'
 
     result += '''
 \end{tabular}

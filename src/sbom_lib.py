@@ -36,7 +36,27 @@ class Component:
     purl: str
     bomref: str
     manufacturer: str
+    reference: str
+    reference_type: str
     depth: int = ALOT
+    vulns: int = 0
+    forced_interesting: bool = False
+
+    @property
+    def has_proper_src(self):
+        return self.gost_provided_by or self.reference_type in ['vcs', 'source-distribution']
+
+    @property
+    def is_interesting(self):
+        return any((
+            self.forced_interesting,
+            self.gost_provided_by,
+            self.gost_security_function != 'no',
+            self.gost_attack_surface != 'no',
+            self.vulns,
+            self.type_ not in ['application', 'library', 'framework'],
+            not self.has_proper_src
+        ))
 
     @property
     def langs_as_list(self):
@@ -46,25 +66,29 @@ class Component:
         return self.bomref
 
     @staticmethod
-    def SearchProperties(p: list[dict], key: str):
+    def Search(p: list[dict], key: str, keykey: str = 'name', valuekey: str = 'value', argsearch: bool=False):
         for i in p:
-            if i.get('name') == key and i.get('value'):
-                return i.get('value')
+            if i.get(keykey) == key and i.get(valuekey):
+                return i[valuekey] if not argsearch else i[keykey]
+
 
     @staticmethod
     def FromJSON(j: dict):
         props = j.get('properties') or []
+        references = j.get('externalReferences') or []
         return Component(
             name=j['name'],
             version=j.get('version'),
             type_=j.get('type'),
             purl=j.get('purl'),
             bomref=j.get('bom-ref'),
-            gost_attack_surface=Component.SearchProperties(props, 'GOST:attack_surface'),
-            gost_security_function=Component.SearchProperties(props, 'GOST:security_function'),
-            gost_provided_by=Component.SearchProperties(props, 'GOST:provided_by'),
-            langs=Component.SearchProperties(props, 'GOST:source_langs'),
-            manufacturer=j.get('manufacturer', dict()).get('name') or ''
+            gost_attack_surface=Component.Search(props, 'GOST:attack_surface'),
+            gost_security_function=Component.Search(props, 'GOST:security_function'),
+            gost_provided_by=Component.Search(props, 'GOST:provided_by'),
+            langs=Component.Search(props, 'GOST:source_langs'),
+            manufacturer=j.get('manufacturer', dict()).get('name') or '',
+            reference=Component.Search(references, 'vcs', 'type', 'url') or Component.Search(references, 'source-distribution', 'type', 'url'),
+            reference_type=Component.Search(references, 'vcs', 'type', 'url', True) or Component.Search(references, 'source-distribution', 'type', 'url', True),
         )
 
 
@@ -137,7 +161,7 @@ class ComponentDedupPresets:
 class SBoM:
     def __init__(self, dedup_strategy):
         self.root: Component | None = None
-        self.components = dict()
+        self.components: dict[str, Component]= dict()
         self.orphans: list[Component] = []
         self.edges: dict[str, list[str]] = defaultdict(list)
         self.vulnerabilities = []
@@ -189,6 +213,9 @@ class SBoM:
 
     def add_vulnerability(self, vuln: Vulnerability):
         self.vulnerabilities.append(vuln)
+        for ref in vuln.components:
+            if self.components.get(ref):
+                self.components[ref].vulns += 1
 
     def get_actual_parentless(self):
         return list(map(self.components.get, set(self.components) - set(chain.from_iterable(self.edges.values())))) + self.orphans

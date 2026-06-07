@@ -4,6 +4,7 @@ from pathlib import Path
 from src import report_brand
 from src import tex_utils
 from src import sbom_lib
+from src import sbom_to_tex
 
 
 DROP_OBOM = ["operating-system", "container"]
@@ -17,7 +18,7 @@ def argparse_init():
     parser.add_argument('-n', '--name', type=str, default='', help='Project main name (for title)')
     parser.add_argument('--split', type=int, default=0, help='Split threshold (0 for no split, >19 otherwise)')
 
-    parser.add_argument('--introspect-depth', type=int, default=0, help='For ')
+    parser.add_argument('--introspect-depth', type=int, default=1, help='For ')
     #parser.add_argument('--ignore-obom-depth', action='store_true', help='If set, depth will preserve same for components with types:' + ', '.join(DROP_OBOM))
 
     parser.add_argument('--no-cve', action='store_true', help='Remove CVE section')
@@ -60,38 +61,80 @@ if __name__ == '__main__':
     filenames = []
     quick_open = lambda x: open(x, 'w', encoding='utf-8')
     common_part_builder = report_brand.make_common_builder(sbom)
+    single_file = False
 
-    if len(sbom) <= args.split * 1.5 or not args.split:  # single file
+    common_desc_sbom = lambda i: 'Это отчёт о компонентах проекта ' + args.name + '. Сведения об уязвимостях приведены в отдельном отчёте. Разделение отчётов было осуществлено для повышения читаемости.'
+    common_desc_cve  = lambda i: 'Это отчёт о уязвимостях проекта ' + args.name + '. Сведения об компонентах приведены в отдельном отчёте. Разделение отчётов было осуществлено для повышения читаемости.'
+
+    if len(sbom) <= args.split * 1.5 or not args.split:    # single file
         filenames += [str(out_dir.joinpath(f'report'))]
         files += [quick_open(fname + '.tex') for fname in filenames]
-        files[0].write(report_brand.TOP)
-        report_brand.add_title_page(files[0], args.name or 'Отчёт об уязвимостях', [report_brand.decode_line(l, sbom.timestamp) for l in args.add_to_title], tex_utils.protect)
-        common = common_part_builder(tex_utils.protect('Это общий (цельный, без разделения на части) отчёт по проекту, содержащий сведения о проекте ' + args.name + ' -- его компонентах и уязвимостях.'))
-        files[0].write(common)
+        files += files
+        common = lambda i: common_part_builder(tex_utils.protect('Это общий (цельный, без разделения на части) отчёт по проекту, содержащий сведения о проекте ' + args.name + ' -- его компонентах и уязвимостях.'))
+        single_file = True
 
-    elif len(sbom.vulnerabilities) <= args.split:        # two files: components + cves
-        cve_filename = out_dir.joinpath(f'report_cve')
-        filenames += [component_filename, cve_filename]
-        files += [quick_open(fname + '.tex') for fname in filenames]
-        report_brand.add_title_page(files[0], args.name or 'Отчёт о компонентах', [report_brand.decode_line(l, sbom.timestamp) for l in args.add_to_title], tex_utils.protect)
-        report_brand.add_title_page(files[1], args.name or 'Отчёт об уязвимостях', [report_brand.decode_line(l, sbom.timestamp) for l in args.add_to_title], tex_utils.protect)
-        common = common_part_builder(tex_utils.protect('Это отчёт о компонентах проекта ' + args.name + '. Сведения об уязвимостях приведены в отдельном отчёте. Разделение отчётов было осуществлено для повышения читаемости.'))
-        files[0].write(common)
-        common = common_part_builder(tex_utils.protect('Это отчёт об уязвимостях проекта ' + args.name + '. Сведения о компонентах приведены в отдельном отчёте. Разделение отчётов было осуществлено для повышения читаемости.'))
-        files[1].write(common)
+    else:
+        if len(sbom.vulnerabilities) <= args.split:        # two files: components + cves
+            filenames += [component_filename, out_dir.joinpath(f'report_cve')]
 
-    else:                                                # a lot of files
-        report_count = (len(sbom.vulnerabilities) * 1.0 / args.split).__ceil__() if args.split else 1
-        cve_filename = lambda i: out_dir.joinpath(f'report_cve_{i}')
-        filenames += [component_filename] + [cve_filename(i+1) for i in range(report_count)]
+        else:                                                # a lot of files
+            report_count = (len(sbom.vulnerabilities) * 1.0 / args.split).__ceil__().__int__() if args.split else 1
+            cve_filename = lambda i: out_dir.joinpath(f'report_cve_{i}')
+            filenames += [component_filename] + [cve_filename(i+1) for i in range(report_count)]
+            common_desc_cve = lambda i: 'Это отчёт о уязвимостях проекта ' + args.name + f' (файл {i} из {report_count}). Сведения об компонентах приведены в отдельном отчёте. Разделение отчётов было осуществлено для повышения читаемости.'
+
         files += [quick_open(fname + '.tex') for fname in filenames]
-        report_brand.add_title_page(files[0], args.name or 'Отчёт о компонентах', [report_brand.decode_line(l, sbom.timestamp) for l in args.add_to_title], tex_utils.protect)
-        for file in files[1:]:
-            report_brand.add_title_page(file, args.name or 'Отчёт об уязвимостях', [report_brand.decode_line(l, sbom.timestamp) for l in args.add_to_title], tex_utils.protect)
+        common = lambda i: common_part_builder(tex_utils.protect(
+            common_desc_sbom(i)
+            if i == 0 else
+            common_desc_cve(i)
+        ))
+
+    for i, f in enumerate(files):
+        f.write(report_brand.TOP)
+        if i != 0 or single_file:
+            title_name = args.name or 'Отчёт об уязвимостях'
+        else:
+            title_name = args.name or 'Отчёт о компонентах'
+        report_brand.add_title_page(f, title_name, [report_brand.decode_line(l, sbom.timestamp) for l in args.add_to_title])
+
+        f.write(common(i))
+
+        if single_file:
+            break
+
+    skipped = 0
+
+    files[0].write('\n\\section{Директивные зависимости}\n\n')
+    for cmp in sbom.iter_components():
+        if cmp.depth > args.introspect_depth:
+            continue
+        if not cmp.is_interesting:
+            skipped += 1
+            continue
+        files[0].write(sbom_to_tex.encode_component(cmp))
+        files[0].write(tex_utils.step())
+        files[0].write(tex_utils.step())
+
+    files[0].write('\n\\section{Транзитивные зависимости}\n\n')
+    for cmp in sbom.iter_components():
+        if cmp.depth > args.introspect_depth:
+            if not cmp.is_interesting:
+                skipped += 1
+                continue
+            files[0].write(sbom_to_tex.encode_component(cmp))
+            files[0].write(tex_utils.step())
+            files[0].write(tex_utils.step())
+
+    if skipped:
+        files[0].write('\n\\section{Дополнительные сведения}\n\n')
+        files[0].write('\\textit{Было пропущено ' + str(skipped) + ' компонентов, так как они не были сочтены достаточно примечательными для отображения в отчёте. Полные сведения о компонентах доступны в формате SBoM-файла, который рекомендуется запросить у авторов отчёта.}')
 
     for f in files:
         f.write(report_brand.BOTTOM)
         f.close()
+        if single_file:
+            break
 
 
 

@@ -1,40 +1,11 @@
 from typing import TextIO
 from datetime import datetime
-from enum import Enum
 
 from .sbom_lib import SBoM
 from .sbom_to_tex import encode_root
 from .tex_table import table
-from .tex_utils import protect
+from .tex_utils import protect, box
 
-
-class ReportColors(Enum):
-    LOW_ORANGE = "FFF2CC"
-    ORANGE = "FFD766"
-    HOT_PINK = "FF7C80"
-    RED = "FF0000"
-    WHITE = "FFFFFF"
-    BLUE_NOT_AFFECTED = "BDD7EE"
-    GREEN_FP = "92D050"
-
-    def SeverityColor(*val):
-        return {
-            "low": ReportColors.LOW_ORANGE.value,
-            "medium": ReportColors.ORANGE.value,
-            "high": ReportColors.HOT_PINK.value,
-            "critical": ReportColors.RED.value,
-        }.get(val[-1]) or ReportColors.WHITE.value
-
-
-    def VulnerabilityStatusColor(*val):
-        return {
-            "resolved": ReportColors.BLUE_NOT_AFFECTED.value,
-            "resolved_with_pedigree": ReportColors.BLUE_NOT_AFFECTED.value,
-            "not_affected": ReportColors.BLUE_NOT_AFFECTED.value,
-            "false_positive": ReportColors.GREEN_FP.value,
-            "in_triage": ReportColors.ORANGE.value,
-            "exploitable": ReportColors.HOT_PINK.value,
-        }.get(val[-1]) or ReportColors.HOT_PINK.value
 
 
 def decode_line(line: str, timestamp: str = None):
@@ -47,7 +18,7 @@ def decode_line(line: str, timestamp: str = None):
     return line
 
 
-def add_title_page(f: TextIO, name: str, lines: list[str], protect):
+def add_title_page(f: TextIO, name: str, lines: list[str]):
     f.write(r"""
 \begin{titlepage} % Suppresses displaying the page number on the title page and the subsequent page counts as page 1
 	
@@ -122,7 +93,7 @@ def make_common_builder(sbom: SBoM):
         ['Число ФБ (no)', sbom.count_property_by_value('sf', 'no')],
         ['Число ФБ (incorrect)', sbom.count_property_by_value('sf', 'TODO')],
         ['Число компонентов типа "{}container"{}', sbom.count_containers()],
-        ['Языки проекта', r'\parbox[t]{7cm}{' + ', '.join(sbom.all_languages()) + '}'],
+        ['Языки проекта', box('7cm', ', '.join(sbom.all_languages()))],
     ], "|l|c|") + r'''
 
 \end{center}
@@ -166,6 +137,7 @@ TOP = r'''
 \usepackage{xurl}
 \usepackage{fontspec}
 \usepackage{longtable}
+\usepackage{indentfirst}
 \usepackage[a4paper, left=30mm, top=20mm, right=10mm, bottom=20mm]{geometry}
  
 
