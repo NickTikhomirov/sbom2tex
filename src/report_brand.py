@@ -20,49 +20,62 @@ def decode_line(line: str, timestamp: str = None):
 def add_title_page(f: TextIO, name: str, lines: list[str]):
     f.write(r"""
 \begin{titlepage} % Suppresses displaying the page number on the title page and the subsequent page counts as page 1
+
+    \thispagestyle{empty}
+
+    \newgeometry{top=20mm,bottom=20mm,left=35mm,right=20mm}
 	
-	%------------------------------------------------
-	%	Grey title box
-	%------------------------------------------------
-	\text{}
+\begin{tikzpicture} [overlay,remember picture]
+    \draw [line width=0.5mm ] 
+($ (current page.north west) + (1cm, -1cm) $)
+    rectangle
+    ($ (current page.south east) + (-1cm,1cm) $);
+\end{tikzpicture}
+
+	
 
 	\vfill
 
-	\colorbox{pnik}{
-		\parbox[t]{0.93\textwidth}{ % Outer full width box
-			\parbox[t]{0.91\textwidth}{ % Inner box for inner right text margin
-				%\raggedleft  Right align the text
-				\fontsize{40pt}{70pt}\selectfont % Title font size, the first argument is the font size and the second is the line spacing, adjust depending on title length
-				\vspace{0.7cm} % Space between the start of the title and the top of the grey box
-				
-				\fontsize{30pt}{35pt}\selectfont{}\color{black}{\textsc{""" + protect(name) + r"""}}
-				
-				\vspace{0.7cm} % Space between the end of the title and the bottom of the grey box
-			}
-		}
-	}
+\begin{title_box}
+\vspace{0.7cm} % Space between the start of the title and the top of the grey box
+
+\fontsize{30pt}{35pt}\selectfont{}\color{black}{\textsc{""" + protect(name) + r"""}}
+
+\vspace{0.7cm} % Space between the end of the title and the bottom of the grey box
+			
+\end{title_box}
 	
-	\vfill % Space between the title box and author information
-	
-	%------------------------------------------------
-	%	Author name and information
-	%------------------------------------------------
+	\text{} % Space between the title box and author information
 	
 	\parbox[t]{0.93\textwidth}{ % Box to inset this section slightly
-		\raggedleft % Right align the text
 		\large % Increase the font size
 		{} % Extra space after name""")
 
+    prev = ''
     for line in lines:
+        if line == 's':
+            f.write(r'\hfill\rule{0.2\linewidth}{1pt}' + '\n\n')
+            prev = line
+            continue
+        elif line == 'r':
+            f.write(r'\raggedleft')
+            prev = line
+            continue
+
         f.write(r"""
-				\fontsize{25pt}{35pt}\selectfont{}\color{black} """ + protect(line) + '\n\n\n')
+				\fontsize{25pt}{35pt}\selectfont{}\color{black} """ + protect(line) + '\n\n')
+
+        if prev == 'r':
+            f.write(r"""\leftskip=0pt \rightskip=0pt \spaceskip=0pt \xspaceskip=0pt		""")
+
+        prev = line
 
     f.write(r"""
-		\hfill\rule{0.2\linewidth}{1pt}% Horizontal line, first argument width, second thickness
 	}
 
 	\vfill
 	
+	\restoregeometry
 \end{titlepage}
 \newpage
 
@@ -139,17 +152,19 @@ TOP = r'''
 \usepackage{longtable}
 \usepackage{indentfirst}
 \usepackage{seqsplit}
+\usepackage[most]{tcolorbox}
 \usepackage[a4paper, left=30mm, top=20mm, right=10mm, bottom=20mm]{geometry}
  
-
+\usepackage{tikz}
+\usetikzlibrary{calc}
+\usetikzlibrary{decorations.pathmorphing}
 
 
 \usepackage{amsmath}
 \usepackage{amsfonts}
 
-\definecolor{grey}{rgb}{0.9,0.9,0.9} % Colour of the box surrounding the title
-
-''' + r'\definecolor{pnik}{rgb}{' + ','.join(ReportColors.HOT_PINK.to_float()) + '}' + r'''
+\newtcolorbox{title_box}{enhanced,colback=red!5!white,
+colframe=red!75!black,drop lifted shadow=black}
 
 \setmainfont{Arial}
 
