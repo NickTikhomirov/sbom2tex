@@ -3,7 +3,7 @@ from datetime import datetime
 
 from .sbom_lib import SBoM
 from .sbom_to_tex import encode_root
-from .tex_table import table
+from .tex_table import table, multirow, multicolumn
 from .tex_utils import protect, box, ReportColors, htmlcolor
 
 
@@ -17,13 +17,13 @@ def decode_line(line: str, timestamp: str = None):
     return line
 
 
-def add_title_page(f: TextIO, name: str, lines: list[str]):
+def add_title_page(f: TextIO, name: str, lines: list[str], size: int):
     f.write(r"""
 \begin{titlepage} % Suppresses displaying the page number on the title page and the subsequent page counts as page 1
 
     \thispagestyle{empty}
 
-    \newgeometry{top=20mm,bottom=20mm,left=35mm,right=20mm}
+    \newgeometry{top=20mm,bottom=20mm,left=20mm,right=20mm}
 	
 \begin{tikzpicture} [overlay,remember picture]
     \draw [line width=0.5mm ] 
@@ -63,7 +63,7 @@ def add_title_page(f: TextIO, name: str, lines: list[str]):
             continue
 
         f.write(r"""
-				\fontsize{25pt}{35pt}\selectfont{}\color{black} """ + protect(line) + '\n\n')
+				\fontsize{""" + str(size) + "pt}{" + str(1.4 * size) + r"""pt}\selectfont{}\color{black} """ + protect(line) + '\n\n')
 
         if prev == 'r':
             f.write(r"""\leftskip=0pt \rightskip=0pt \spaceskip=0pt \xspaceskip=0pt		""")
@@ -82,7 +82,8 @@ def add_title_page(f: TextIO, name: str, lines: list[str]):
 """)
 
 
-def make_common_builder(sbom: SBoM):
+def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
+    grade, grade_name, grade_desc = grade
     provided_by = sbom.get_provided_by()
     tail = r'''
 
@@ -95,21 +96,26 @@ def make_common_builder(sbom: SBoM):
 \begin{center}
 
 ''' + table([
-        ['Число дочерних компонентов', sbom.len_components()],
-        ['Число уязвимостей', sbom.len_vulnerabilities()],
-        ['Число ПА (yes)', sbom.count_property_by_value('as', 'yes')],
-        ['Число ПА (indirect)', sbom.count_property_by_value('as', 'indirect')],
-        ['Число ПА (no)', sbom.count_property_by_value('as', 'no')],
-        ['Число ПА (incorrect)', sbom.count_property_by_value('as', 'TODO')],
-        ['Число ФБ (yes)', sbom.count_property_by_value('sf', 'yes')],
-        ['Число ФБ (indirect)', sbom.count_property_by_value('sf', 'indirect')],
-        ['Число ФБ (no)', sbom.count_property_by_value('sf', 'no')],
-        ['Число ФБ (incorrect)', sbom.count_property_by_value('sf', 'TODO')],
-        ['Число компонентов типа "{}container"{}', sbom.count_containers()],
-        ['Языки проекта', box('7cm', ', '.join(sbom.all_languages()))],
-    ], "|l|c|") + r'''
+        [multicolumn(2, '|l|', 'Число дочерних компонентов'), sbom.len_components()],
+        [multicolumn(2, '|l|', 'Максимальная глубина'), max(cmp.depth for cmp in sbom.iter_components())],
+        [multicolumn(2, '|l|', 'Число уязвимостей'), sbom.len_vulnerabilities()],
+        (((2, 3),), [multirow(4, 'ПА'), '(yes)', sbom.count_property_by_value('as', 'yes')]),
+        (((2, 3),), ['', '(indirect)', sbom.count_property_by_value('as', 'indirect')]),
+        (((2, 3),), ['', '(no)', sbom.count_property_by_value('as', 'no')]),
+        ['', '(incorrect)', sbom.count_property_by_value('as', 'TODO')],
+        (((2, 3),), [multirow(4, 'ФБ'), '(yes)', sbom.count_property_by_value('sf', 'yes')]),
+        (((2, 3),), ['', '(indirect)', sbom.count_property_by_value('sf', 'indirect')]),
+        (((2, 3),), ['', '(no)', sbom.count_property_by_value('sf', 'no')]),
+        ['', '(incorrect)', sbom.count_property_by_value('sf', 'TODO')],
+        [multicolumn(2, '|l|','Число компонентов типа "{}container"{}'), sbom.count_containers()],
+        [multicolumn(2, '|l|','Языки проекта'), box('7cm', ', '.join(sbom.all_languages()))],
+    ] + ([
+        [multicolumn(2, '|l|', grade_name), grade]]
+        if grade else []), "|l|c|c|") + r'''
 
 \end{center}
+
+''' + (grade_desc if grade else '') + r'''
 
 ''' + (r'''
 
@@ -119,10 +125,16 @@ def make_common_builder(sbom: SBoM):
 ''' + '\n'.join(f'    \\item {protect(kv[0])} ({protect(kv[1])} компонентов)' for kv in provided_by.items()) + r'''
 \end{itemize}
 
-''' if sbom.get_provided_by() else '') + r'''
+''' if sbom.get_provided_by() else '')
 
+    if sbom.tools:
+        tail += r'''
+
+\subsection{Инструменты генерации SBoM}
 
 '''
+        for tool in sbom.tools:
+            tail += encode_root(tool, 'Инструмент') + '\n\n'
 
     return lambda identification: r'''
 \tableofcontents
@@ -152,8 +164,9 @@ TOP = r'''
 \usepackage{longtable}
 \usepackage{indentfirst}
 \usepackage{seqsplit}
+\usepackage{array}
 \usepackage[most]{tcolorbox}
-\usepackage[a4paper, left=30mm, top=20mm, right=10mm, bottom=20mm]{geometry}
+\usepackage[a4paper, left=20mm, top=20mm, right=10mm, bottom=20mm]{geometry}
  
 \usepackage{tikz}
 \usetikzlibrary{calc}
@@ -162,6 +175,7 @@ TOP = r'''
 
 \usepackage{amsmath}
 \usepackage{amsfonts}
+\usepackage{pdflscape}
 
 \newtcolorbox{title_box}{enhanced,colback=red!5!white,
 colframe=red!75!black,drop lifted shadow=black}

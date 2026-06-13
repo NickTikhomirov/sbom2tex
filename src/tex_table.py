@@ -27,20 +27,33 @@ def __cell(a: str | tuple[str, str]):
     return a
 
 
-def table(contents: list[list], signature: str | int):
+def table(contents: list[list|tuple], signature: str | int, long: bool = False):
+    title = 'tabular' if not long else 'longtable'
     if type(signature) == int:
         signature = '|' + ('c|' * signature)
     result = r'''
-\begin{tabular}{''' + signature + r'''}
+\begin{''' + title + '}{' + signature + r'''}
 \hline
 '''
     for line in contents:
-        result += ' & '.join(map(__cell, line)) + r'\\ \hline' + '\n'
+        if not line: continue
+        ranges = []
+        if type(line) == tuple:
+            ranges, line = line
+        result += ' & '.join(map(__cell, line)) + r'\\ '
+        if not ranges:
+            result += r'\hline'
+        else:
+            result += ' '.join(r'\cline{' + f'{r[0]}-{r[1]}' + '}' for r in ranges)
+        result += '\n'
 
-    result += '''
-\end{tabular}
-'''
+    result += r'''
+\end{''' + title + '}'
+
     return result
+
+
+
 
 
 def column(first: str, *lines: str):

@@ -1,4 +1,3 @@
-import itertools
 from dataclasses import dataclass
 from collections import deque, defaultdict
 from itertools import filterfalse, chain
@@ -13,6 +12,8 @@ SAFE_RESOLUTIONS = [
     "not_affected",
     "false_positive",
 ]
+
+VALID_GOST = ['yes', 'no', 'indirect']
 
 @dataclass
 class Dull:
@@ -52,6 +53,10 @@ class Component:
     @property
     def has_proper_src(self):
         return self.gost_provided_by or self.reference_type in ['vcs', 'source-distribution']
+
+    @property
+    def has_interesting_type(self):
+        return self.type_ not in ['application', 'library', 'framework']
 
     @property
     def langs_as_list(self):
@@ -100,7 +105,7 @@ class VulnerabilityGrade:
     @staticmethod
     def FromJSON(j: dict):
         return VulnerabilityGrade(
-            score=str(j.get("score")) or '',
+            score=str(j.get("score") or ''),
             method=j.get("method") or '',
             severity=j.get("severity") or '',
         )
@@ -153,6 +158,10 @@ class Vulnerability:
             ids_=tuple(Vulnerability.IdVectorFromJSON(j) or [j.get('id') or 'NO ID'])
         )
 
+    @property
+    def is_resolved(self):
+        return bool(self.verdict_desc) and self.verdict_stat in SAFE_RESOLUTIONS
+
 
 class ComponentDedupPresets:
     def __init__(self):
@@ -169,12 +178,23 @@ class SBoM:
         self.components: dict[str, Component]= dict()
         self.orphans: list[Component] = []
         self.edges: dict[str, list[str]] = defaultdict(list)
+        self.back_edges: dict[str, list[str]] = defaultdict(list)
         self.vulnerabilities = []
         self.signatures = set()
         self.make_signature = dedup_strategy
         self.ancestors: dict[int, list[Component]] = defaultdict(list)
         self.vulnerabilities: list[Vulnerability] = []
         self.timestamp = ''
+        self.tools: list[Component] = []
+
+    def review_percent(self, predicate):
+        vulnerable_bomrefs: list[tuple[Vulnerability, str]] = []
+        for vuln in self.vulnerabilities:
+            vulnerable_bomrefs.extend((vuln, c) for c in vuln.components)
+        vulnerable_bomrefs = [i for i in vulnerable_bomrefs if predicate(self.components[i[1]])]
+        if not len(vulnerable_bomrefs):
+            return float(100)
+        return sum(1 for vul_and_cmp in vulnerable_bomrefs if vul_and_cmp[0].is_resolved) * 1.0 / len(vulnerable_bomrefs)
 
     def iter_components(self):
         yield from self.orphans
@@ -189,11 +209,11 @@ class SBoM:
     def count_property_by_value(self, prop: str, val: str):
         getter = (lambda c: c.gost_attack_surface) if prop == 'as' else (lambda c: c.gost_security_function)
         if val == 'TODO':
-            return self.__count(lambda cmp: getter(cmp) not in ['yes', 'no', 'indirect'])
+            return self.__count(lambda cmp: getter(cmp) not in VALID_GOST)
         return self.__count(lambda cmp: getter(cmp) == val)
 
     def count_containers(self):
-        return self.__count(lambda cmp: cmp.type_ == "container")
+        return self.__count(lambda cmp: cmp.type_ == "container") + int(self.root.type_ == 'container')
 
     def get_provided_by(self):
         result: dict[str, int] = defaultdict(int)
@@ -225,6 +245,52 @@ class SBoM:
     def get_actual_parentless(self):
         return list(map(self.components.get, set(self.components) - set(chain.from_iterable(self.edges.values())))) + self.orphans
 
+    def build_backward_graph(self):
+        self.back_edges = defaultdict(list)
+        for from_, tos in self.edges.items():
+            for to_ in tos:
+                self.back_edges[to_].append(from_)
+
+    def cleanup_edges(self):
+        old_edges = self.edges
+        self.edges = defaultdict(list)
+        for from_, tos in old_edges.items():
+            if not tos:
+                continue
+            self.edges[from_] = list(set(tos))
+
+    def make_skips(self, types: list[str]):
+        predicate = lambda x: x.type_ in types
+        to_skip = filter(predicate, self.iter_components())
+        resolutions: dict[str, list[str]] = defaultdict(list)
+        to_skip_refs = set(map(lambda x: x.bomref, to_skip))
+
+        def resolve(unwanted: str):
+            back = self.back_edges.get
+            ancestors = set(back(unwanted))
+            result = set()
+            visited = {unwanted}
+            while ancestors:
+                ancestors -= visited
+                result |= (ancestors - to_skip_refs)
+                visited |= ancestors
+                ancestors = set(chain.from_iterable(filter(bool, map(back, ancestors))))
+            resolutions[unwanted] = list(result)
+
+        for skip_cmpref in to_skip_refs:
+            if not (children := self.edges.get(skip_cmpref)):
+                continue
+            resolve(skip_cmpref)
+            for child in children:
+                if child not in self.components: continue  # somebody has cut some components from SBoM
+
+                # forward:
+                self.edges[child].extend(resolutions[skip_cmpref])
+
+                # back:
+                for skip in resolutions[skip_cmpref]:
+                    self.edges[skip].append(child)
+
     def update_depths(self, ancestors_log_depth: int = 1):
         if not self.components:
             self.root.depth = 0
@@ -255,7 +321,7 @@ class SBoM:
             self.ancestors[id(next_vertex)] = identity_unique(already_known_ancestors, ancestors_by_parent)
 
     def sort_vulns(self):
-        self.vulnerabilities.sort(key=lambda v: float(v.get_leading_grade().score), reverse=True)
+        self.vulnerabilities.sort(key=lambda v: float(v.get_leading_grade().score or -1), reverse=True)
 
     def len_components(self):
         return len(self.components) + len(self.orphans)
@@ -267,8 +333,8 @@ class SBoM:
         return self.len_components() + self.len_vulnerabilities()
 
 
-def build_sbom_from_files(files, drop_types: list[str]):
-    sbom = SBoM(ComponentDedupPresets.default)
+def build_sbom_from_files(files, drop_types: list[str], dedup_strat=ComponentDedupPresets.default, skip_types: list[str] = None):
+    sbom = SBoM(dedup_strat)
     for src in files:
         with open(src, 'r', encoding='utf-8') as f:
             j = json.load(f)
@@ -283,6 +349,12 @@ def build_sbom_from_files(files, drop_types: list[str]):
             for edge in j.get('dependencies') or []:
                 if edge.get('dependsOn'):
                     sbom.add_edge(edge['ref'], edge['dependsOn'])
+            tool_names = set()
+            for cmp in map(Component.FromJSON, j.get('metadata', dict()).get('tools', dict()).get('components', [])):
+                if cmp.name in tool_names:
+                    continue
+                sbom.tools.append(cmp)
+                tool_names.add(cmp.name)
 
         for src in files:
             with open(src, 'r', encoding='utf-8') as f:
@@ -290,6 +362,9 @@ def build_sbom_from_files(files, drop_types: list[str]):
                 for raw_vuln in j.get('vulnerabilities') or []:
                     sbom.add_vulnerability(Vulnerability.FromJSON(raw_vuln))
 
+        sbom.build_backward_graph()
+        if skip_types:
+            sbom.make_skips(skip_types)
         sbom.update_depths()
         sbom.sort_vulns()
         return sbom
@@ -298,15 +373,29 @@ def build_sbom_from_files(files, drop_types: list[str]):
 @dataclass
 class ComponentEstimator:
     provided_by_is_not_interesting: bool
+    no_gost: bool
+    shame: bool
+    counted: int = 0
+    interesting: int = 0
 
-    def __call__(xelf, self):
-        return any((
+    def __interesting_gost(self, value: str):
+        if self.no_gost:
+            return False
+        if not self.shame:
+            return value != 'no'
+        return value in ['yes', 'indirect']
+
+    def __call__(xelf, self: Component):
+        xelf.counted += 1
+        is_interesting = any((
             self.forced_interesting,
             self.gost_provided_by and not xelf.provided_by_is_not_interesting,
-            self.gost_security_function != 'no',
-            self.gost_attack_surface != 'no',
+            xelf.__interesting_gost(self.gost_security_function),
+            xelf.__interesting_gost(self.gost_attack_surface),
             self.vulns,
-            self.type_ not in ['application', 'library', 'framework'],
-            not self.has_proper_src
+            self.has_interesting_type,
+            xelf.shame and not self.has_proper_src
         ))
+        xelf.counted += int(is_interesting)
+        return is_interesting
 

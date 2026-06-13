@@ -46,13 +46,15 @@ class ReportColors(Enum):
             colors[i] = colors[i] * 1.0 / 255
         return map(str, colors)
 
+
 def protect(string: str | object):
     string = str(string)
     string = string.replace('\\', '\\textbackslash{}')
-    string = string.replace('~', '\\texttildelow{}')
+    string = string.replace('~', '\\textasciitilde{}')
     string = string.replace('`', '\\textasciigrave{}')
-    for symbol in '_#$&%"':
+    for symbol in '_#$&%':
         string = string.replace(symbol, '\\' + symbol)
+    string = string.replace('"', '"{}')
     return string
 
 
@@ -80,11 +82,12 @@ def b(s: str):
 def box(size: str, text: str, centered: bool=False):
     if centered:
         text = '\\centering{}' + text
-    return r'\parbox[t]{' + size + '}{' + text + '}'
+    return r'\parbox[m]{' + size + '}{' + text + '}'
 
 
 def join_multiline(*lines: str):
-    return '\\\\'.join(filter(bool, lines))
+    return '\\vspace{0.2cm}' + '\\\\'.join(filter(bool, lines)) + '\\strut{}' + '\\vspace{0.2cm}'
+
 
 def step():
     return '\n\\text{}\n'
@@ -96,3 +99,7 @@ def in_small(text: str):
 
 def htmlcolor(text: str):
     return '\\cellcolor[HTML]{' + text + "}"
+
+
+def seqsplit(s: str):
+    return '\\seqsplit{' + s + '}'
