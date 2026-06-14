@@ -149,7 +149,7 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
 ''' + identification + tail
 
 
-TOP = r'''% !TEX program =XeLaTeX
+TOP = lambda font: r'''% !TEX program =XeLaTeX
 \documentclass[12pt, a4paper]{article}
 
 \special{dvipdfmx:config C 0x0010} 
@@ -186,7 +186,7 @@ TOP = r'''% !TEX program =XeLaTeX
 \newtcolorbox{title_box}{enhanced,colback=red!5!white,
 colframe=red!75!black,drop lifted shadow=black}
 
-\setmainfont{Arial}
+\setmainfont{''' + font + r'''}
 
 ''' + '\n'.join(map(ReportColors.to_latex_define, ReportColors)) + r'''
 

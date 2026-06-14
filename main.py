@@ -1,12 +1,14 @@
 import argparse
 from itertools import chain
 from pathlib import Path
+import subprocess
 
 from src import report_brand
 from src import tex_utils
 from src import sbom_lib
 from src import sbom_to_tex
 from src import messages
+from src import container_mode_helper as cnt
 
 
 DROP_OBOM = ["operating-system", "container"]
@@ -39,6 +41,8 @@ def argparse_init():
     parser.add_argument('-D', '--all-directives', action='store_true', help='Disable "interesting" filter for directive components')
     parser.add_argument('-A', '--all-components', action='store_true', help='Disable "interesting" filter')
     parser.add_argument('-T', '--table-of-components', action='store_true', help='Write components in one huge table')
+    parser.add_argument('--compile', action='store_true', help='Invoke latexmk to compile results')
+    parser.add_argument('--use-arial', action='store_true', help='Use Arial font (if you have one on your machine)')
 
     parser.add_argument('-O', '--opinionated', action='store_true', help='Use author\'s favourite preset')
 
@@ -56,10 +60,15 @@ def argparse_init():
 
 if __name__ == '__main__':
     args = argparse_init()
-
-    if not args.input or not any(args.input):
+    possible_directories_or_sboms = list(chain.from_iterable(args.input))
+    if not possible_directories_or_sboms:
         print('No input files! Exiting now!')
         exit()
+
+    sbom_files = list(chain.from_iterable(cnt.find_json_files(d) for d in possible_directories_or_sboms))
+    if (not args.output) or (args.compile and str(args.output) == '.') or not cnt.is_dir(args.output):
+        if dirs := [d for d in possible_directories_or_sboms if cnt.is_dir(d)]:
+            args.output = dirs[0]
 
     args.add_to_title = args.add_to_title or []
     if args.opinionated:
@@ -77,9 +86,8 @@ if __name__ == '__main__':
         args.all_directives = True
         args.review_attack_surface = True
 
-
     drop_types = (DROP_OBOM if args.no_obom else []) + (DROP_BUZZ if args.no_buzz else [])
-    sbom = sbom_lib.build_sbom_from_files(list(chain.from_iterable(args.input)), drop_types, skip_types=["operating-system"] if args.add_os_skips else [])
+    sbom = sbom_lib.build_sbom_from_files(sbom_files, drop_types, skip_types=["operating-system"] if args.add_os_skips else [])
 
     grade = ''
     grade_name = ''
@@ -137,7 +145,7 @@ if __name__ == '__main__':
                                             [variable_subtitles.get(l) or report_brand.decode_line(l, sbom.timestamp)
                                              for l in args.add_to_title], args.subtitle_size)
 
-        f.write(report_brand.TOP)
+        f.write(report_brand.TOP('Arial' if args.use_arial else 'DejaVu Sans'))
         f.write(title)
         message = messages.intro_message(project_name, i, cve_max if is_cve else cmp_max, is_cve)
         f.write(common_part_builder(tex_utils.protect(message)))
@@ -192,6 +200,10 @@ if __name__ == '__main__':
         if not args.split:
             break
 
-
-
-
+    if args.compile:
+        for filename in filenames:
+            args = ['latexmk', '-pdfxe', '-interaction=nonstopmode', '-output-directory='+str(args.output), filename + '.tex']
+            subprocess.run(args)
+            subprocess.run(args)
+            args += ['-c']
+            subprocess.run(args)  # latex компилируют три раза подряд, сынок
