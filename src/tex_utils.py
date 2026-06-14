@@ -13,30 +13,39 @@ class ReportColors(Enum):
     GOLD = 'FFC90E'
     NEUTRAL_RED = 'F8CBAD'
 
+    def htmlcolor(self):
+        return htmlcolor(self.value)
+
+    def latex_name(self):
+        return 'bomtex' + self.name.lower()
+
+    def to_latex_define(self):
+        return r'\definecolor' + b(self.latex_name()) + b('HTML') + b(self.value)
+
     def SeverityColor(*val):
         return {
-            "low": ReportColors.LOW_ORANGE.value,
-            "medium": ReportColors.ORANGE.value,
-            "high": ReportColors.HOT_PINK.value,
-            "critical": ReportColors.RED.value,
-        }.get(val[-1]) or ReportColors.WHITE.value
+            "low": ReportColors.LOW_ORANGE,
+            "medium": ReportColors.ORANGE,
+            "high": ReportColors.HOT_PINK,
+            "critical": ReportColors.RED,
+        }.get(val[-1]) or ReportColors.WHITE
 
     def VulnerabilityStatusColor(*val):
         return {
-            "resolved": ReportColors.BLUE_NOT_AFFECTED.value,
-            "resolved_with_pedigree": ReportColors.BLUE_NOT_AFFECTED.value,
-            "not_affected": ReportColors.BLUE_NOT_AFFECTED.value,
-            "false_positive": ReportColors.GREEN_FP.value,
-            "in_triage": ReportColors.ORANGE.value,
-            "exploitable": ReportColors.HOT_PINK.value,
-        }.get(val[-1]) or ReportColors.HOT_PINK.value
+            "resolved": ReportColors.BLUE_NOT_AFFECTED,
+            "resolved_with_pedigree": ReportColors.BLUE_NOT_AFFECTED,
+            "not_affected": ReportColors.BLUE_NOT_AFFECTED,
+            "false_positive": ReportColors.GREEN_FP,
+            "in_triage": ReportColors.ORANGE,
+            "exploitable": ReportColors.HOT_PINK,
+        }.get(val[-1]) or ReportColors.HOT_PINK
 
     def GostColor(*val):
         return {
-            'yes': ReportColors.GREEN_FP.value,
-            'indirect': ReportColors.BLUE_NOT_AFFECTED.value,
-            'no': ReportColors.GRAY_BACKGROUND.value,
-        }.get(val[-1]) or ReportColors.HOT_PINK.value
+            'yes': ReportColors.GREEN_FP,
+            'indirect': ReportColors.BLUE_NOT_AFFECTED,
+            'no': ReportColors.GRAY_BACKGROUND,
+        }.get(val[-1]) or ReportColors.HOT_PINK
 
     def to_float(self):
         hex_ = self.value
@@ -58,6 +67,12 @@ def protect(string: str | object):
     return string
 
 
+def protect_square_brackets(string: str):
+    string = string.replace('[', '{}${}[{}${}')
+    string = string.replace(']', '{}${}]{}${}')
+    return string
+
+
 def url(string: str | object):
     string = str(string)
     string = string.replace('%', '\\%')
@@ -75,8 +90,12 @@ def in_human(s: str):
     return result
 
 
-def b(s: str):
-    return '{' + s + '}'
+def b(s: object):
+    return '{' + str(s) + '}'
+
+
+def Г(s: object):
+    return '[' + str(s) + ']'
 
 
 def box(size: str, text: str, centered: bool=False):
@@ -103,3 +122,22 @@ def htmlcolor(text: str):
 
 def seqsplit(s: str):
     return '\\seqsplit{' + s + '}'
+
+
+
+def split_by_size(line: str, size: int):
+    return [line[i:i+size] for i in range(0, len(line), size)]
+
+
+def cut_text(text: str, default: str):
+    text = text.replace('###', '\n\n###').strip()
+    paragrahs = text.split('\n\n')
+    result = []
+    for par in paragrahs:
+        if len(par) > 800:
+            result.extend(split_by_size(par, 500))
+        else:
+            result.append(par)
+    if len(result) == 0:
+        result = [default]
+    return result

@@ -48,7 +48,9 @@ class Component:
     reference_type: str
     depth: int = ALOT
     vulns: int = 0
+    solved_vulns: int = 0
     forced_interesting: bool = False
+    important: bool = False
 
     @property
     def has_proper_src(self):
@@ -70,7 +72,6 @@ class Component:
         for i in p:
             if i.get(keykey) == key and i.get(valuekey):
                 return i[valuekey] if not argsearch else i[keykey]
-
 
     @staticmethod
     def FromJSON(j: dict):
@@ -97,10 +98,23 @@ class VulnerabilityGrade:
     score: str
     method: str
     severity: str
+    src: str
+
+    @property
+    def severity_rank(self):
+        return {
+            "low": 1,
+            "medium": 2,
+            "high": 3,
+            "critical": 4,
+        }.get(self.severity) or -1
+
+    def __bool__(self):
+        return all((self.score, self.method, self.severity))
 
     @staticmethod
     def Empty():
-        return VulnerabilityGrade('5', '???', '???')
+        return VulnerabilityGrade('7.5', 'sbom2tex', '', 'sbom2tex')
 
     @staticmethod
     def FromJSON(j: dict):
@@ -108,6 +122,7 @@ class VulnerabilityGrade:
             score=str(j.get("score") or ''),
             method=j.get("method") or '',
             severity=j.get("severity") or '',
+            src=j.get('source', dict()).get('name') or ''
         )
 
 
@@ -125,7 +140,17 @@ class Vulnerability:
     own_bomref: str | None
 
     def get_leading_grade(self) -> VulnerabilityGrade:
-        return self.grades[-1]
+        if len(self.grades) == 1:
+            return self.grades[0]
+
+        grades = list(self.grades)
+
+        # gos bless stable sorts
+        grades.sort(key=lambda x: x.src.lower() == 'nvd', reverse=True)
+        grades.sort(key=lambda x: x.method or '', reverse=True)
+        grades.sort(key=lambda x: x.method.lower().startswith('cvss'), reverse=True)
+        grades.sort(key=bool, reverse=True)
+        return grades[0]
 
     @property
     def main_id(self):
@@ -148,7 +173,7 @@ class Vulnerability:
         analysis = j.get('analysis', dict())
         return Vulnerability(
             cwes=j.get('cwes') or [],
-            desc=j.get('description') or j.get('detail') or '',
+            desc=j.get('description') or j.get('detail') or '\n\n'.join(filter(bool, [i.get('url') for i in j.get('advisories', [])])) or '',
             grades=tuple(map(VulnerabilityGrade.FromJSON, j.get('ratings') or [])) or tuple([VulnerabilityGrade.Empty()]),
             components=tuple(str(a.get('ref')) or '' for a in (j.get("affects") or [])),
             own_bomref=j.get('bom-ref'),
@@ -179,8 +204,8 @@ class SBoM:
         self.orphans: list[Component] = []
         self.edges: dict[str, list[str]] = defaultdict(list)
         self.back_edges: dict[str, list[str]] = defaultdict(list)
-        self.vulnerabilities = []
-        self.signatures = set()
+        self.signatures: dict[tuple, Component] = dict()
+        self.aliases: dict[str, Component] = dict()
         self.make_signature = dedup_strategy
         self.ancestors: dict[int, list[Component]] = defaultdict(list)
         self.vulnerabilities: list[Vulnerability] = []
@@ -194,7 +219,7 @@ class SBoM:
         vulnerable_bomrefs = [i for i in vulnerable_bomrefs if predicate(self.components[i[1]])]
         if not len(vulnerable_bomrefs):
             return float(100)
-        return sum(1 for vul_and_cmp in vulnerable_bomrefs if vul_and_cmp[0].is_resolved) * 1.0 / len(vulnerable_bomrefs)
+        return sum(1 for vul_and_cmp in vulnerable_bomrefs if vul_and_cmp[0].is_resolved) * 100.0 / len(vulnerable_bomrefs)
 
     def iter_components(self):
         yield from self.orphans
@@ -225,8 +250,16 @@ class SBoM:
     def add_component(self, c: Component):
         signature = self.make_signature(c)
         if signature in self.signatures:
+            our_component = self.signatures[signature]
+            if c.bomref and c.bomref not in self.components:
+                self.aliases[c.bomref] = our_component
+            our_component.gost_provided_by = our_component.gost_provided_by or c.gost_provided_by
+            our_component.gost_attack_surface = our_component.gost_attack_surface or c.gost_attack_surface
+            our_component.gost_security_function = our_component.gost_security_function or c.gost_security_function
+            our_component.langs = our_component.langs or c.langs
+            our_component.purl = our_component.purl or c.purl
             return
-        self.signatures.add(signature)
+        self.signatures[signature] = c
 
         if c.bomref:
             self.components[c.bomref] = c
@@ -234,16 +267,36 @@ class SBoM:
             self.orphans.append(c)
 
     def add_edge(self, from_: str, to_: list[str]):
-        self.edges[from_].extend(to_)
+        check = self.get_or_alias
+        if from_cmp := check(from_):
+            from_ = from_cmp.bomref
+        else: return
+        valid_tos = list(filter(lambda x: check(x) is not None, to_))
+        if valid_tos:
+            self.edges[from_].extend(map(lambda x: check(x).bomref, valid_tos))
+
+    def get_or_alias(self, ref: str):
+        if cmp := self.components.get(ref):
+            return cmp
+        if cmp := self.aliases.get(ref):
+            return cmp
+        if ref == self.root.bomref:
+            return self.root
+        return None
 
     def add_vulnerability(self, vuln: Vulnerability):
         self.vulnerabilities.append(vuln)
         for ref in vuln.components:
-            if self.components.get(ref):
-                self.components[ref].vulns += 1
+            if cmp := self.get_or_alias(ref):
+                cmp.vulns += 1
+                if vuln.is_resolved:
+                    cmp.solved_vulns += 1
+
+    def __get_parentless_with_bomrefs(self):
+        return list(map(self.components.get, set(self.components) - set(chain.from_iterable(self.edges.values()))))
 
     def get_actual_parentless(self):
-        return list(map(self.components.get, set(self.components) - set(chain.from_iterable(self.edges.values())))) + self.orphans
+        return self.__get_parentless_with_bomrefs() + self.orphans
 
     def build_backward_graph(self):
         self.back_edges = defaultdict(list)
@@ -258,6 +311,10 @@ class SBoM:
             if not tos:
                 continue
             self.edges[from_] = list(set(tos))
+
+    def adopt(self):
+        if self.root.bomref:
+            self.add_edge(self.root.bomref, list(map(Component.get_bomref, self.__get_parentless_with_bomrefs())))
 
     def make_skips(self, types: list[str]):
         predicate = lambda x: x.type_ in types
@@ -322,6 +379,7 @@ class SBoM:
 
     def sort_vulns(self):
         self.vulnerabilities.sort(key=lambda v: float(v.get_leading_grade().score or -1), reverse=True)
+        self.vulnerabilities.sort(key=lambda v: v.get_leading_grade().severity_rank, reverse=True)
 
     def len_components(self):
         return len(self.components) + len(self.orphans)
@@ -350,30 +408,39 @@ def build_sbom_from_files(files, drop_types: list[str], dedup_strat=ComponentDed
                 if edge.get('dependsOn'):
                     sbom.add_edge(edge['ref'], edge['dependsOn'])
             tool_names = set()
-            for cmp in map(Component.FromJSON, j.get('metadata', dict()).get('tools', dict()).get('components', [])):
+            tools: dict | list = j.get('metadata', dict()).get('tools', dict())
+            if type(tools) == dict:
+                tools = tools.get('components', [])
+            tools: list
+            for cmp in map(Component.FromJSON, tools):
                 if cmp.name in tool_names:
                     continue
                 sbom.tools.append(cmp)
                 tool_names.add(cmp.name)
 
-        for src in files:
-            with open(src, 'r', encoding='utf-8') as f:
-                j = json.load(f)
-                for raw_vuln in j.get('vulnerabilities') or []:
-                    sbom.add_vulnerability(Vulnerability.FromJSON(raw_vuln))
+    for src in files:
+        with open(src, 'r', encoding='utf-8') as f:
+            j = json.load(f)
+            for raw_vuln in j.get('vulnerabilities') or []:
+                sbom.add_vulnerability(Vulnerability.FromJSON(raw_vuln))
 
-        sbom.build_backward_graph()
-        if skip_types:
-            sbom.make_skips(skip_types)
-        sbom.update_depths()
-        sbom.sort_vulns()
-        return sbom
+    sbom.adopt()
+    sbom.cleanup_edges()
+    sbom.build_backward_graph()
+    if skip_types:
+        sbom.make_skips(skip_types)
+    sbom.cleanup_edges()
+    sbom.update_depths()
+    sbom.sort_vulns()
+    return sbom
 
 
 @dataclass
 class ComponentEstimator:
     provided_by_is_not_interesting: bool
     no_gost: bool
+    interesting_depth: int
+    all_components: bool
     shame: bool
     counted: int = 0
     interesting: int = 0
@@ -388,6 +455,7 @@ class ComponentEstimator:
     def __call__(xelf, self: Component):
         xelf.counted += 1
         is_interesting = any((
+            self.important,
             self.forced_interesting,
             self.gost_provided_by and not xelf.provided_by_is_not_interesting,
             xelf.__interesting_gost(self.gost_security_function),
@@ -395,7 +463,7 @@ class ComponentEstimator:
             self.vulns,
             self.has_interesting_type,
             xelf.shame and not self.has_proper_src
-        ))
-        xelf.counted += int(is_interesting)
+        )) or xelf.all_components or self.depth <= xelf.interesting_depth
+        xelf.interesting += int(is_interesting)
         return is_interesting
 

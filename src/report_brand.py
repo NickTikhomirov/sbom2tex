@@ -1,10 +1,9 @@
-from typing import TextIO
 from datetime import datetime
 
 from .sbom_lib import SBoM
 from .sbom_to_tex import encode_root
-from .tex_table import table, multirow, multicolumn
-from .tex_utils import protect, box, ReportColors, htmlcolor
+from .tex_table import TableType, multirow, multicolumn
+from .tex_utils import protect, box, ReportColors
 
 
 def decode_line(line: str, timestamp: str = None):
@@ -14,11 +13,13 @@ def decode_line(line: str, timestamp: str = None):
         return 'SBoM: ' + timestamp
     if line == 'd':
         return 'Отчёт: ' + now
+    if line == 'N':
+        return ''
     return line
 
 
-def add_title_page(f: TextIO, name: str, lines: list[str], size: int):
-    f.write(r"""
+def add_title_page(name: str, lines: list[str], size: int):
+    result = r"""
 \begin{titlepage} % Suppresses displaying the page number on the title page and the subsequent page counts as page 1
 
     \thispagestyle{empty}
@@ -49,28 +50,31 @@ def add_title_page(f: TextIO, name: str, lines: list[str], size: int):
 	
 	\parbox[t]{0.93\textwidth}{ % Box to inset this section slightly
 		\large % Increase the font size
-		{} % Extra space after name""")
+		{} % Extra space after name"""
 
     prev = ''
     for line in lines:
+        if not line:
+            prev = line
+            continue
         if line == 's':
-            f.write(r'\hfill\rule{0.2\linewidth}{1pt}' + '\n\n')
+            result += r'\hfill\rule{0.2\linewidth}{1pt}' + '\n\n'
             prev = line
             continue
         elif line == 'r':
-            f.write(r'\raggedleft')
+            result += r'\raggedleft'
             prev = line
             continue
 
-        f.write(r"""
-				\fontsize{""" + str(size) + "pt}{" + str(1.4 * size) + r"""pt}\selectfont{}\color{black} """ + protect(line) + '\n\n')
+        result += r"""
+				\fontsize{""" + str(size) + "pt}{" + str(1.4 * size) + r"""pt}\selectfont{}\color{black} """ + protect(line) + '\n\n'
 
         if prev == 'r':
-            f.write(r"""\leftskip=0pt \rightskip=0pt \spaceskip=0pt \xspaceskip=0pt		""")
+            result += r"""\leftskip=0pt \rightskip=0pt \spaceskip=0pt \xspaceskip=0pt		"""
 
         prev = line
 
-    f.write(r"""
+    return result + r"""
 	}
 
 	\vfill
@@ -79,7 +83,7 @@ def add_title_page(f: TextIO, name: str, lines: list[str], size: int):
 \end{titlepage}
 \newpage
 
-""")
+"""
 
 
 def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
@@ -95,7 +99,7 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
 
 \begin{center}
 
-''' + table([
+''' + TableType.SHORT([
         [multicolumn(2, '|l|', 'Число дочерних компонентов'), sbom.len_components()],
         [multicolumn(2, '|l|', 'Максимальная глубина'), max(cmp.depth for cmp in sbom.iter_components())],
         [multicolumn(2, '|l|', 'Число уязвимостей'), sbom.len_vulnerabilities()],
@@ -108,7 +112,7 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
         (((2, 3),), ['', '(no)', sbom.count_property_by_value('sf', 'no')]),
         ['', '(incorrect)', sbom.count_property_by_value('sf', 'TODO')],
         [multicolumn(2, '|l|','Число компонентов типа "{}container"{}'), sbom.count_containers()],
-        [multicolumn(2, '|l|','Языки проекта'), box('7cm', ', '.join(sbom.all_languages()))],
+        [multicolumn(2, '|l|','Языки проекта'), box('7cm', ', '.join(sorted(sbom.all_languages())))],
     ] + ([
         [multicolumn(2, '|l|', grade_name), grade]]
         if grade else []), "|l|c|c|") + r'''
@@ -145,16 +149,15 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
 ''' + identification + tail
 
 
-TOP = r'''
-% !TEX program =XeLaTeX
+TOP = r'''% !TEX program =XeLaTeX
 \documentclass[12pt, a4paper]{article}
 
+\special{dvipdfmx:config C 0x0010} 
 
 \usepackage[utf8]{inputenc}
 \usepackage[russian, english]{babel}
 \usepackage[table,xcdraw]{xcolor}
 \usepackage{anyfontsize}
-\usepackage[hidelinks]{hyperref}
 \usepackage{setspace}
 \usepackage{textcomp}
 \usepackage{multirow}
@@ -162,6 +165,7 @@ TOP = r'''
 \usepackage{xurl}
 \usepackage{fontspec}
 \usepackage{longtable}
+\usepackage{tabularray}
 \usepackage{indentfirst}
 \usepackage{seqsplit}
 \usepackage{array}
@@ -172,16 +176,19 @@ TOP = r'''
 \usetikzlibrary{calc}
 \usetikzlibrary{decorations.pathmorphing}
 
-
+\SetTblrTemplate{head,foot}{empty}
 \usepackage{amsmath}
 \usepackage{amsfonts}
 \usepackage{pdflscape}
+
+\usepackage[hidelinks]{hyperref}
 
 \newtcolorbox{title_box}{enhanced,colback=red!5!white,
 colframe=red!75!black,drop lifted shadow=black}
 
 \setmainfont{Arial}
 
+''' + '\n'.join(map(ReportColors.to_latex_define, ReportColors)) + r'''
 
 \begin{document}
 
