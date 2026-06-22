@@ -58,18 +58,18 @@ class ReportColors(Enum):
 
 def protect(string: str | object):
     string = str(string)
-    string = string.replace('\\', '\\textbackslash{}')
-    string = string.replace('~', '\\textasciitilde{}')
-    string = string.replace('`', '\\textasciigrave{}')
+    translations = str.maketrans({
+        '\\': '\\textbackslash{}',
+        '^': '\\textasciicircum{}',
+        '~': '\\textasciitilde{}',
+        '`': '\\textasciigrave{}',
+        '{': '\\{',
+        '}': '\\}',
+    })
+    string = string.translate(translations)
     for symbol in '_#$&%':
         string = string.replace(symbol, '\\' + symbol)
     string = string.replace('"', '"{}')
-    return string
-
-
-def protect_square_brackets(string: str):
-    string = string.replace('[', '{}${}[{}${}')
-    string = string.replace(']', '{}${}]{}${}')
     return string
 
 
@@ -122,7 +122,6 @@ def htmlcolor(text: str):
 
 def seqsplit(s: str):
     return '\\seqsplit{' + s + '}'
-
 
 
 def split_by_size(line: str, size: int):
