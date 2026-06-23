@@ -86,7 +86,7 @@ def add_title_page(name: str, lines: list[str], size: int):
 """
 
 
-def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
+def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), no_gost: bool = False):
     grade, grade_name, grade_desc = grade
     provided_by = sbom.get_provided_by()
     tail = r'''
@@ -103,6 +103,7 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
         [multicolumn(2, '|l|', 'Число дочерних компонентов'), sbom.len_components()],
         [multicolumn(2, '|l|', 'Максимальная глубина'), max(cmp.depth for cmp in sbom.iter_components())],
         [multicolumn(2, '|l|', 'Число уязвимостей'), sbom.len_vulnerabilities()],
+    ] + ([
         (((2, 3),), [multirow(4, 'ПА'), '(yes)', sbom.count_property_by_value('as', 'yes')]),
         (((2, 3),), ['', '(indirect)', sbom.count_property_by_value('as', 'indirect')]),
         (((2, 3),), ['', '(no)', sbom.count_property_by_value('as', 'no')]),
@@ -113,7 +114,7 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', '')):
         ['', '(incorrect)', sbom.count_property_by_value('sf', 'TODO')],
         [multicolumn(2, '|l|','Число компонентов типа "{}container"{}'), sbom.count_containers()],
         [multicolumn(2, '|l|','Языки проекта'), box('7cm', ', '.join(sorted(sbom.all_languages())))],
-    ] + ([
+    ] if not no_gost else []) + ([
         [multicolumn(2, '|l|', grade_name), grade]]
         if grade else []), "|l|c|c|") + r'''
 
@@ -198,6 +199,6 @@ colframe=red!75!black,drop lifted shadow=black}
 
 BOTTOM = '''
 
-\end{document}
+\\end{document}
 '''
 

@@ -115,7 +115,7 @@ if __name__ == '__main__':
     files = []
     filenames = []
     quick_open = lambda x: open(x, 'w', encoding='utf-8')
-    common_part_builder = report_brand.make_common_builder(sbom, grade_vec)
+    common_part_builder = report_brand.make_common_builder(sbom, grade_vec, args.no_gost)
 
     cve_max = 0
     cmp_max = 0
@@ -176,7 +176,7 @@ if __name__ == '__main__':
             files[0].write(sbom_to_tex.TableType.LONG(
                 [table_header] +
                 [encoder.Apply(cmp, args) for cmp in arr],
-                sbom_to_tex.ComponentToTable.Signature(args))
+                encoder.Signature(args))
             )
         else:
             for cmp in arr:
@@ -208,7 +208,7 @@ if __name__ == '__main__':
     if args.compile:
         for filename in filenames:
             cmd = ['latexmk', '-pdfxe', '-interaction=nonstopmode', '-output-directory='+str(args.output)]
-            target = [filename + '.tex']
+            target = [str(filename) + '.tex']
             subprocess.run(cmd + target)
             subprocess.run(cmd + target)
             cmd += ['-c']

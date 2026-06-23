@@ -216,7 +216,7 @@ class SBoM:
         vulnerable_bomrefs: list[tuple[Vulnerability, str]] = []
         for vuln in self.vulnerabilities:
             vulnerable_bomrefs.extend((vuln, c) for c in vuln.components)
-        vulnerable_bomrefs = [i for i in vulnerable_bomrefs if predicate(self.components[i[1]])]
+        vulnerable_bomrefs = [i for i in vulnerable_bomrefs if predicate(self.get_or_alias(i[1]))]
         if not len(vulnerable_bomrefs):
             return float(100)
         return sum(1 for vul_and_cmp in vulnerable_bomrefs if vul_and_cmp[0].is_resolved) * 100.0 / len(vulnerable_bomrefs)
