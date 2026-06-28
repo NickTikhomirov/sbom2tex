@@ -3,12 +3,12 @@ from itertools import chain
 from pathlib import Path
 import subprocess
 
-from src import report_brand
+from src import report_boilerplate
 from src import tex_utils
 from src import sbom_lib
 from src import sbom_to_tex
 from src import messages
-from src import container_mode_helper as cnt
+from src import os_helper as cnt
 
 
 DROP_OBOM = ["operating-system", "container"]
@@ -115,7 +115,7 @@ if __name__ == '__main__':
     files = []
     filenames = []
     quick_open = lambda x: open(x, 'w', encoding='utf-8')
-    common_part_builder = report_brand.make_common_builder(sbom, grade_vec, args.no_gost)
+    common_part_builder = report_boilerplate.make_common_builder(sbom, grade_vec, args.no_gost)
 
     cve_max = 0
     cmp_max = 0
@@ -146,11 +146,11 @@ if __name__ == '__main__':
             "N": 'Цельный отчёт',
             "k": 'Список компонентов и уязвимостей',
         }
-        title = report_brand.add_title_page(args.name or project_name + '. Отчёт',
-                                            [variable_subtitles.get(l) or report_brand.decode_line(l, sbom.timestamp)
+        title = report_boilerplate.add_title_page(args.name or project_name + '. Отчёт',
+                                            [variable_subtitles.get(l) or report_boilerplate.decode_line(l, sbom.timestamp)
                                              for l in args.add_to_title], args.subtitle_size)
 
-        f.write(report_brand.TOP('Arial' if args.use_arial else 'DejaVu Sans'))
+        f.write(report_boilerplate.TOP('Arial' if args.use_arial else 'DejaVu Sans'))
         f.write(title)
         message = messages.intro_message(project_name, i, cve_max if is_cve else cmp_max, is_cve)
         f.write(common_part_builder(tex_utils.protect(message)))
@@ -200,7 +200,7 @@ if __name__ == '__main__':
             file.write(tex_utils.step())
 
     for f in files:
-        f.write(report_brand.BOTTOM)
+        f.write(report_boilerplate.BOTTOM)
         f.close()
         if not args.split:
             break

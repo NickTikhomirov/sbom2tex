@@ -62,7 +62,7 @@ class Component:
 
     @property
     def langs_as_list(self):
-        return list(map(str.strip, self.langs.split(',')))
+        return list(filter(bool, map(str.strip, self.langs.split(','))))
 
     def get_bomref(self):
         return self.bomref
@@ -211,6 +211,7 @@ class SBoM:
         self.vulnerabilities: list[Vulnerability] = []
         self.timestamp = ''
         self.tools: list[Component] = []
+        self.tool_signatures: dict[tuple, Component] = dict()
 
     def review_percent(self, predicate):
         vulnerable_bomrefs: list[tuple[Vulnerability, str]] = []
@@ -265,6 +266,13 @@ class SBoM:
             self.components[c.bomref] = c
         else:
             self.orphans.append(c)
+
+    def add_tool(self, c: Component):
+        signature = self.make_signature(c)
+        if signature in self.tool_signatures:
+            return
+        self.tool_signatures[signature] = c
+        self.tools.append(c)
 
     def add_edge(self, from_: str, to_: list[str]):
         check = self.get_or_alias
@@ -358,18 +366,16 @@ class SBoM:
         to_visit: deque[tuple[Dull | Component, Component]] = deque([(Dull(), self.root)])
         orphans = self.get_actual_parentless()
         to_visit.extend((self.root, orphan) for orphan in orphans)
-        visited = set()
+        enqueued = {self.root.bomref} | set(map(Component.get_bomref, orphans))
         while to_visit:
             parent_and_next_vertex = to_visit.popleft()
             parent, next_vertex = parent_and_next_vertex
-            #next_depth = parent.depth + 1 - int(ignore_obom and parent.type_ in DROP_OBOM)
             next_vertex.depth = min(next_vertex.depth, parent.depth + 1)
-            if next_vertex.bomref:
-                visited.add(next_vertex.bomref)
 
             children_refs = self.edges.get(next_vertex.bomref) or []
-            children = filter(bool, map(self.components.get, filterfalse(visited.__contains__, children_refs)))
+            children = list(filter(bool, map(self.components.get, filterfalse(enqueued.__contains__, children_refs))))
             to_visit.extend((next_vertex, child) for child in children)
+            enqueued |= set(map(Component.get_bomref, children))
 
             ancestors_by_parent = self.ancestors[id(parent)]
             if 1 <= parent.depth <= ancestors_log_depth:
@@ -415,7 +421,7 @@ def build_sbom_from_files(files, drop_types: list[str], dedup_strat=ComponentDed
             for cmp in map(Component.FromJSON, tools):
                 if cmp.name in tool_names:
                     continue
-                sbom.tools.append(cmp)
+                sbom.add_tool(cmp)
                 tool_names.add(cmp.name)
 
     for src in files:
