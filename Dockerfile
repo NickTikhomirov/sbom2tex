@@ -1,4 +1,4 @@
-FROM texlive/texlive:TL2025-historic
+FROM registry.gitlab.com/islandoftex/images/texlive:TL2025-historic
 
 WORKDIR /app
 COPY ./src ./src/

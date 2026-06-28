@@ -3,12 +3,12 @@ from itertools import chain
 from pathlib import Path
 import subprocess
 
-from src import report_brand
+from src import report_boilerplate
 from src import tex_utils
 from src import sbom_lib
 from src import sbom_to_tex
 from src import messages
-from src import container_mode_helper as cnt
+from src import os_helper as cnt
 
 
 DROP_OBOM = ["operating-system", "container"]
@@ -24,7 +24,7 @@ def argparse_init():
     parser.add_argument('-i', '--input', type=Path, action='append', nargs='+', help='DependencyTrack Inventory or VDR')
     parser.add_argument('-o', '--output', default='.', type=Path, help='Directory to store result')
     parser.add_argument('--split', type=int, default=0, help='Split threshold (0 for no split, >19 otherwise)')
-    parser.add_argument('--provided-by-is-not-interesting', action='store_true', help='For now all "GOST:provided_by" are considered worth mentioning. Use the flag to override.')
+    parser.add_argument('--provided-by-is-not-interesting', action='store_true', help='By default all "GOST:provided_by" are considered worth mentioning. Use the flag to override.')
 
     parser.add_argument('--directive-depth', type=int, default=1, help='For ')
     parser.add_argument('-n', '--name', type=str, default='', help='Project main name (for title)')
@@ -77,7 +77,7 @@ if __name__ == '__main__':
         args.no_buzz = True
         if "d" not in args.add_to_title:
             args.add_to_title = ["d"] + args.add_to_title
-        if "N" not in args.add_to_title:
+        if "N" not in args.add_to_title and args.split:
             args.add_to_title = ["N"] + args.add_to_title
         if "k" not in args.add_to_title:
             args.add_to_title = ["k"] + args.add_to_title
@@ -85,6 +85,8 @@ if __name__ == '__main__':
         args.table_of_components = True
         args.all_directives = True
         args.review_attack_surface = True
+        if args.split:
+            args.add_to_title = [a for a in args.add_to_title if a != 'N']
 
     drop_types = (DROP_OBOM if args.no_obom else []) + (DROP_BUZZ if args.no_buzz else [])
     sbom = sbom_lib.build_sbom_from_files(sbom_files, drop_types, skip_types=["operating-system"] if args.add_os_skips else [])
@@ -113,7 +115,7 @@ if __name__ == '__main__':
     files = []
     filenames = []
     quick_open = lambda x: open(x, 'w', encoding='utf-8')
-    common_part_builder = report_brand.make_common_builder(sbom, grade_vec)
+    common_part_builder = report_boilerplate.make_common_builder(sbom, grade_vec, args.no_gost)
 
     cve_max = 0
     cmp_max = 0
@@ -140,12 +142,15 @@ if __name__ == '__main__':
         variable_subtitles = {
             "N": 'Часть ' + str(i) if i else '',
             "k": 'Список компонентов' if not is_cve else 'Список уязвимостей',
+        } if args.split else {
+            "N": 'Цельный отчёт',
+            "k": 'Список компонентов и уязвимостей',
         }
-        title = report_brand.add_title_page(args.name or project_name + '. Отчёт',
-                                            [variable_subtitles.get(l) or report_brand.decode_line(l, sbom.timestamp)
+        title = report_boilerplate.add_title_page(args.name or project_name + '. Отчёт',
+                                            [variable_subtitles.get(l) or report_boilerplate.decode_line(l, sbom.timestamp)
                                              for l in args.add_to_title], args.subtitle_size)
 
-        f.write(report_brand.TOP('Arial' if args.use_arial else 'DejaVu Sans'))
+        f.write(report_boilerplate.TOP('Arial' if args.use_arial else 'DejaVu Sans'))
         f.write(title)
         message = messages.intro_message(project_name, i, cve_max if is_cve else cmp_max, is_cve)
         f.write(common_part_builder(tex_utils.protect(message)))
@@ -171,7 +176,7 @@ if __name__ == '__main__':
             files[0].write(sbom_to_tex.TableType.LONG(
                 [table_header] +
                 [encoder.Apply(cmp, args) for cmp in arr],
-                sbom_to_tex.ComponentToTable.Signature(args))
+                encoder.Signature(args))
             )
         else:
             for cmp in arr:
@@ -190,20 +195,21 @@ if __name__ == '__main__':
     for batch, file in zip(cve_batches, files[1:]):
         file.write('\n\\section{Уязвимости}\n\n')
         for cve in batch:
-            file.write(sbom_to_tex.encode_vuln(cve, sbom.components.get, args.shame))
+            file.write(sbom_to_tex.encode_vuln(cve, sbom.get_or_alias, args.shame))
             file.write(tex_utils.step())
             file.write(tex_utils.step())
 
     for f in files:
-        f.write(report_brand.BOTTOM)
+        f.write(report_boilerplate.BOTTOM)
         f.close()
         if not args.split:
             break
 
     if args.compile:
         for filename in filenames:
-            args = ['latexmk', '-pdfxe', '-interaction=nonstopmode', '-output-directory='+str(args.output), filename + '.tex']
-            subprocess.run(args)
-            subprocess.run(args)
-            args += ['-c']
-            subprocess.run(args)  # latex компилируют три раза подряд, сынок
+            cmd = ['latexmk', '-pdfxe', '-interaction=nonstopmode', '-output-directory='+str(args.output)]
+            target = [str(filename) + '.tex']
+            subprocess.run(cmd + target)
+            subprocess.run(cmd + target)
+            cmd += ['-c']
+            subprocess.run(cmd + target)  # latex компилируют три раза подряд, сынок
