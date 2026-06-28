@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from copy import copy
 from enum import Enum
 
-from .tex_utils import htmlcolor, cut_text, ReportColors, protect, in_small, b, Г
+from .tex_utils import cut_text, ReportColors, protect, in_small, b, Г
 
 
 @dataclass
@@ -16,6 +16,7 @@ class Cell:
     pattern: str = ''
     is_multirow: bool = False
     multi_size: int = 0
+    bold: bool = False
 
     def check_huge(self):
         if type(self) != Cell:
@@ -45,6 +46,9 @@ class Cell:
         if self.unprotected:
             result = protect(result)
 
+        if self.bold:
+            result = f'\\textbf{b(result)}'
+
         if self.small_font:
             result = in_small(self.data)
 
@@ -65,6 +69,9 @@ class Cell:
         result = self.data
         if self.unprotected:
             result = protect(result)
+
+        if self.bold:
+            result = f'\\textbf{b(result)}'
 
         result = r'\strut{}' + b(result)
 
@@ -106,9 +113,9 @@ class Line:
         return result + '\n'
 
 
-
 PREMADE_CELL_BREAKABLE = Cell('', can_be_huge=True, small_font=True, unprotected=True)
 PREMADE_CELL_GRAY = Cell('', color=ReportColors.GRAY_BACKGROUND)
+PREMADE_CELL_BOLD = Cell('', bold=True)
 
 
 def multirow(size: int, text: str, color: ReportColors = None):

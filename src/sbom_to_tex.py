@@ -3,6 +3,9 @@ from .tex_utils import protect, b, box, join_multiline, url, in_human, seqsplit
 from .tex_table import *
 
 
+
+
+
 def encode_component(c: Component, no_gost: bool = False, shame: bool = False):
     cve_color = ReportColors.GOLD if not c.vulns else ReportColors.HOT_PINK
     src_color = ReportColors.GRAY_BACKGROUND
@@ -106,7 +109,7 @@ ComponentToLine = [
         lambda s: in_small(seqsplit(protect(s))),
         lambda a: True,
         lambda c, a: '' if not c.vulns else (ReportColors.HOT_PINK if (c.important and c.solved_vulns < c.vulns) else ReportColors.ORANGE),
-        lambda a: "4cm" if not a.no_gost else '5cm'
+        lambda a: "5cm" if not a.no_gost else '7cm'
     ),
     (
         "Версия",
@@ -165,23 +168,16 @@ ComponentToLine = [
         lambda a: "2cm"
     ),
     (
-        "Provided By",
-        lambda c: c.gost_provided_by or '',
-        lambda s: protect(s[:6]) + (r'\dots{}' if len(s) > 6 else ''),
-        lambda a: not a.no_gost,
-        lambda c, a: '',
-        lambda a: "3cm" if not a.no_gost else ''
-    ),
-    (
         "Источники",
-        lambda c: (c.purl, c.reference),
-        lambda s: in_small(box("6cm", join_multiline(
+        lambda c: (c.purl, c.reference, c.gost_provided_by or ''),
+        lambda s: in_small(box("8cm", join_multiline(
+                ('\\strut{}$\\cdot$\\,' + protect(s[2])) if s[2] else '',
                 ('\\strut{}$\\cdot$\\,\\seqsplit{' + protect(s[0]) + '}') if s[0] else '',
-                ('\\strut{}$\\cdot$\\,' + url(s[1])) if s[1] else ''
+                ('\\strut{}$\\cdot$\\,' + url(s[1])) if s[1] else '',
             ))),
         lambda a: True,
         lambda c, a: ReportColors.LOW_ORANGE if a.shame and not c.has_proper_src else '',
-        lambda a: '6cm'
+        lambda a: '8cm'
     ),
 ]
 

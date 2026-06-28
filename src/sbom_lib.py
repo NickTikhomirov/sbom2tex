@@ -248,6 +248,14 @@ class SBoM:
                 result[cmp.gost_provided_by] += 1
         return result
 
+    def get_langs(self):
+        result: dict[str, int] = defaultdict(int)
+        for cmp in self.iter_components():
+            for lang in cmp.langs_as_list:
+                if not lang: continue
+                result[lang] += 1
+        return result
+
     def add_component(self, c: Component):
         signature = self.make_signature(c)
         if signature in self.signatures:
