@@ -38,9 +38,11 @@ def argparse_init():
     parser.add_argument('--no-gost', action='store_true', help='Remove all GOST properties')
     parser.add_argument('--no-obom', action='store_true', help='Drop all components with types: ' + ', '.join(DROP_OBOM))
     parser.add_argument('--no-buzz', action='store_true', help='Drop all components with types: ' + ', '.join(DROP_BUZZ))
+    parser.add_argument('--no-advertisements', action='store_true', help='Disable "tools" subsection from intro section')
     parser.add_argument('-D', '--all-directives', action='store_true', help='Disable "interesting" filter for directive components')
     parser.add_argument('-A', '--all-components', action='store_true', help='Disable "interesting" filter')
     parser.add_argument('-T', '--table-of-components', action='store_true', help='Write components in one huge table')
+    parser.add_argument('-x', '--compile-count', type=int, default=3, help='Use this with "--compile" to tamper with amount of compilation iterations (2-3 iterations are perfect, 3 is default)')
     parser.add_argument('--compile', action='store_true', help='Invoke latexmk to compile results')
     parser.add_argument('--use-arial', action='store_true', help='Use Arial font (if you have one on your machine)')
 
@@ -115,7 +117,7 @@ if __name__ == '__main__':
     files = []
     filenames = []
     quick_open = lambda x: open(x, 'w', encoding='utf-8')
-    common_part_builder = report_boilerplate.make_common_builder(sbom, grade_vec, args.no_gost)
+    common_part_builder = report_boilerplate.make_common_builder(sbom, grade_vec, args.no_gost, args.no_advertisements)
 
     cve_max = 0
     cmp_max = 0
@@ -206,10 +208,12 @@ if __name__ == '__main__':
             break
 
     if args.compile:
+        count = args.compile_count
+        if not (1 <= count <= 5):
+            count = 3
         for filename in filenames:
             cmd = ['latexmk', '-pdfxe', '-interaction=nonstopmode', '-output-directory='+str(args.output)]
             target = [str(filename) + '.tex']
-            subprocess.run(cmd + target)
-            subprocess.run(cmd + target)
-            cmd += ['-c']
-            subprocess.run(cmd + target)  # latex компилируют три раза подряд, сынок
+            for i in range(count):
+                subprocess.run(cmd + target)
+            subprocess.run(['latexmk', '-c'] + target)

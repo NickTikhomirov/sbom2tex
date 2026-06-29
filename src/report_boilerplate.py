@@ -19,7 +19,7 @@ def decode_line(line: str, timestamp: str = None):
     return line
 
 
-def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), no_gost: bool = False):
+def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), no_gost: bool = False, no_advertisiments: bool = False):
     grade, grade_name, grade_desc = grade
     provided_by = sbom.get_provided_by()
     tail = r'''
@@ -79,8 +79,7 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), 
 
 ''' + TableType.LONG([[PREMADE_CELL_BOLD("Язык"), PREMADE_CELL_BOLD("Кол")]] + langs, 2)
 
-
-    if sbom.tools:
+    if sbom.tools and not no_advertisiments:
         tail += r'''
 
 \subsection{Инструменты генерации SBoM}

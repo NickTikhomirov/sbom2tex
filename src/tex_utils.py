@@ -69,6 +69,8 @@ def protect(string: str | object):
     string = string.translate(translations)
     for symbol in '_#$&%':
         string = string.replace(symbol, '\\' + symbol)
+    for symbol in '<->':
+        string = string.replace(symbol, symbol + '{}')
     string = string.replace('"', r'\textquotedbl{}')
     return string
 
