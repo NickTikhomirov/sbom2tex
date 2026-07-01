@@ -25,6 +25,8 @@ def argparse_init():
     parser.add_argument('-o', '--output', default='.', type=Path, help='Directory to store result')
     parser.add_argument('--split', type=int, default=0, help='Split threshold (0 for no split, >19 otherwise)')
     parser.add_argument('--provided-by-is-not-interesting', action='store_true', help='By default all "GOST:provided_by" are considered worth mentioning. Use the flag to override.')
+    parser.add_argument('--separate-empty-cves', action='store_true', help='Separate CVEs without description to separate section')
+    parser.add_argument('--empty-desc', type=str, default='Некоторые инструменты/базы помечают таким образом вышедшие обновления безопасности для компонентов', help='Use with "--separate-empty-cves" to add a section commentary')
 
     parser.add_argument('--directive-depth', type=int, default=1, help='For ')
     parser.add_argument('-n', '--name', type=str, default='', help='Project main name (for title)')
@@ -139,6 +141,7 @@ if __name__ == '__main__':
 
         files += [quick_open(str(fname) + '.tex') for fname in filenames]
 
+    # report: titles, intros etc
     for i, f in enumerate(files):
         is_cve = i != 0
         variable_subtitles = {
@@ -160,16 +163,17 @@ if __name__ == '__main__':
         if not args.split:
             break
 
-    encoder = sbom_to_tex.ComponentToTable
-    table_header = encoder.Header(args)
+    # report: prepare components
+    encoder = sbom_to_tex.LineRenderer.ForComponents(args)
+    table_header = encoder.Header()
     directive = [cmp for cmp in sbom.iter_components() if cmp.depth <= args.directive_depth and evaluator(cmp)]
     transitive = [cmp for cmp in sbom.iter_components() if cmp.depth > args.directive_depth and evaluator(cmp)]
     directive.sort(key=lambda c: c.depth)
     transitive.sort(key=lambda c: c.depth)
-
     if args.table_of_components:
         files[0].write('\n\\begin{landscape}\n\n')
 
+    # report: print components
     for name, arr in [('Директивные', directive), ('Транзитивные', transitive)]:
         if not arr:
             continue
@@ -177,8 +181,8 @@ if __name__ == '__main__':
         if args.table_of_components:
             files[0].write(sbom_to_tex.TableType.LONG(
                 [table_header] +
-                [encoder.Apply(cmp, args) for cmp in arr],
-                encoder.Signature(args))
+                [encoder(cmp) for cmp in arr],
+                encoder.Signature())
             )
         else:
             for cmp in arr:
@@ -186,14 +190,20 @@ if __name__ == '__main__':
                 files[0].write(tex_utils.step())
                 files[0].write(tex_utils.step())
 
+    # report: components outro
     if args.table_of_components:
         files[0].write('\n\\end{landscape}\n\n')
-
     if skipped := evaluator.counted - evaluator.interesting:
         files[0].write('\n\\section{Дополнительные сведения}\n\n')
         files[0].write('\\textit{Было пропущено ' + str(skipped) + ' компонентов, так как они не были сочтены достаточно примечательными для отображения в отчёте. Полные сведения о компонентах доступны в формате SBoM-файла, который рекомендуется запросить у авторов отчёта.}')
 
-    cve_batches = split(sbom.vulnerabilities, args.split) if args.split else [sbom.vulnerabilities]
+    # report: print cves
+    vulns = sbom.vulnerabilities
+    empty = []  # for empty vulns
+    if args.separate_empty_cves:
+        vulns = [v for v in vulns if v.desc]
+        empty = [v for v in vulns if not v.desc]
+    cve_batches = split(vulns, args.split) if args.split else [vulns]
     for batch, file in zip(cve_batches, files[1:]):
         file.write('\n\\section{Уязвимости}\n\n')
         for cve in batch:
@@ -201,12 +211,26 @@ if __name__ == '__main__':
             file.write(tex_utils.step())
             file.write(tex_utils.step())
 
+    # report: empty cves
+    if empty:
+        empty_printer = sbom_to_tex.LineRenderer.ForEmptyCVEs(args)
+        f = files[-1]
+        f.write('\n\\begin{landscape}\n\n')
+        f.write('\n\\section{Уязвимости без описания}\n\n')
+        if desc := str(args.empty_desc).strip():
+            f.write(tex_utils.protect(desc) + '\n\n')
+        f.write(sbom_to_tex.TableType.
+                LONG([['Уязвимость', 'Критичность', 'Компонент(ы)', 'Комментарий']], '|p[]|p[]|p[]|p[]|'))
+        f.write('\n\\end{landscape}\n\n')
+
+    # report: finalize
     for f in files:
         f.write(report_boilerplate.BOTTOM)
         f.close()
         if not args.split:
             break
 
+    # compile
     if args.compile:
         count = args.compile_count
         if not (1 <= count <= 5):

@@ -2,7 +2,7 @@ from dataclasses import dataclass
 from copy import copy
 from enum import Enum
 
-from .tex_utils import cut_text, ReportColors, protect, in_small, b, Г
+from .tex_utils import cut_text, ReportColors, protect, in_small, b, Г, protect_but_better
 
 
 @dataclass
@@ -18,6 +18,13 @@ class Cell:
     multi_size: int = 0
     bold: bool = False
 
+    def set(self, **kwargs):
+        for k, v in kwargs.items():
+            if k not in dir(self):
+                continue
+            self.__setattr__(k, v)
+        return self
+
     def check_huge(self):
         if type(self) != Cell:
             return False
@@ -28,10 +35,7 @@ class Cell:
             return self
         return self.data
 
-    def set(self, **kwargs):
-        if color := kwargs.get('color'):
-            self.color = color
-        return self
+
 
     def __call__(self, new_data: str):
         result = copy(self)
@@ -44,7 +48,8 @@ class Cell:
 
         result = self.data
         if self.unprotected:
-            result = protect(result)
+            protector = protect_but_better if self.can_be_huge else protect
+            result = protector(result)
 
         if self.bold:
             result = f'\\textbf{b(result)}'
@@ -68,7 +73,8 @@ class Cell:
 
         result = self.data
         if self.unprotected:
-            result = protect(result)
+            protector = protect_but_better if self.can_be_huge else protect
+            result = protector(result)
 
         if self.bold:
             result = f'\\textbf{b(result)}'
@@ -180,6 +186,7 @@ class TableType(Enum):
     \end{''' + self.value + '}'
 
         return result
+
 
 def column(first: str, *lines: str):
     if len(lines) == 0:

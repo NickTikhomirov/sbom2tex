@@ -3,6 +3,7 @@ from collections import deque, defaultdict
 from itertools import filterfalse, chain
 import json
 
+from .tex_utils import in_human
 
 ALOT = 99999999999
 
@@ -125,6 +126,10 @@ class VulnerabilityGrade:
             src=j.get('source', dict()).get('name') or ''
         )
 
+    def full_severity(self):
+        if type(self) is not VulnerabilityGrade:
+            '???'
+        return ' / '.join(filter(bool, (in_human(self.severity), self.score)))
 
 
 @dataclass
@@ -161,6 +166,11 @@ class Vulnerability:
             if i.startswith('BDU-'):
                 return i
         return self.ids_[0]
+
+    def get_some_ids(self, count: int):
+        main_ = self.main_id
+        all_ids = [main_] + list(set(self.ids_) - {main_})
+        return all_ids[:count]
 
     @staticmethod
     def IdVectorFromJSON(j: dict):

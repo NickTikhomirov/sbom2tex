@@ -1,5 +1,5 @@
 from enum import Enum
-
+import re as regexp
 
 class ReportColors(Enum):
     LOW_ORANGE = "FFF2CC"
@@ -73,6 +73,19 @@ def protect(string: str | object):
         string = string.replace(symbol, symbol + '{}')
     string = string.replace('"', r'\textquotedbl{}')
     return string
+
+
+def protect_but_better(text: str):
+    tokens = regexp.split(r"(\s+)", text)
+
+    def protect_token(token: str):
+        protected = protect(token)
+        if len(token) > 28:
+            protected = '\\seqsplit{' + protected + '}'
+        return protected
+
+    tokens = [protect_token(t) for t in tokens]
+    return ''.join(tokens)
 
 
 def url(string: str | object):

@@ -1,8 +1,7 @@
-from .sbom_lib import Component, Vulnerability, VALID_GOST
+from dataclasses import dataclass
+from .sbom_lib import Component, Vulnerability, VALID_GOST, VulnerabilityGrade
 from .tex_utils import protect, b, box, join_multiline, url, in_human, seqsplit
 from .tex_table import *
-
-
 
 
 
@@ -69,18 +68,18 @@ def encode_vuln(vuln: Vulnerability, get_component, shame: bool):
     if vuln.is_resolved:
         cve_color = ReportColors.VulnerabilityStatusColor(vuln.verdict_stat)
 
-    cve_full_severity = ' / '.join(filter(bool, (in_human(grade.severity), grade.score)))
+    cve_full_severity = grade.full_severity()
     cve_method = grade.method or grade.src
     cve_full_severity += (' (' + cve_method + ')') if cve_method else ''
 
     return TableType.FLEXIBLE([
         [
             multicolumn(1, '|c|', protect(cve_full_severity), color=ReportColors.SeverityColor(grade.severity)),
-            multicolumn(1, 'c|', protect(vuln.main_id), color=cve_color),
+            multicolumn(1, 'c|', '\\seqsplit{' + protect(vuln.main_id) + '}', color=cve_color),
         ],
         [
             PREMADE_CELL_BREAKABLE(vuln.desc),
-            PREMADE_CELL_GRAY(column('Имена', *map(in_small, map(protect, vuln.ids_)))),
+            PREMADE_CELL_GRAY(column('Имена', *map(in_small, map(protect, vuln.ids_)))).set(multi_size=1, pattern='c|'),
         ],
 
         [
@@ -99,7 +98,7 @@ def encode_vuln(vuln: Vulnerability, get_component, shame: bool):
             multicolumn(1, '|l|', free_text('0.7\\textwidth', 'Комментарий: ' + protect(vuln.verdict_desc)), color=ReportColors.VulnerabilityStatusColor(vuln.verdict_stat)),
             multicolumn(1, 'c|', in_human(vuln.verdict_stat), color=ReportColors.VulnerabilityStatusColor(vuln.verdict_stat)),
         ] if vuln.verdict_stat or vuln.verdict_desc or shame else [],
-    ], '|p{0.7\\textwidth}|c|')
+    ], '|p{0.7\\textwidth}|p{0.25\\textwidth}|')
 
 
 ComponentToLine = [
@@ -182,34 +181,73 @@ ComponentToLine = [
 ]
 
 
-class ComponentToTable:
-    @staticmethod
-    def Color(f: tuple, c: Component, a):
-        result = f[4](c, a) or ''
+@dataclass
+class LineRenderer:
+    # 0: name
+    # 1: get field
+    # 2: format result of 1
+    # 3: is required in current setup
+    # 4: cell color
+    # 5: column width
+    rules: list[tuple]
+    params: object
+
+    def Color(self, f: tuple, arg: object):
+        result = f[4](arg, self.params) or ''
         if result:
             return result.htmlcolor()
         return result
 
-    @staticmethod
-    def Header(a):
-        return [f[0] for f in ComponentToLine if f[3](a)]
+    def Header(self):
+        return [f[0] for f in self.rules if f[3](self.params)]
 
-    @staticmethod
-    def Apply(c: Component, a):
+    def __call__(self, arg: object):
         return [
-            ComponentToTable.Color(f, c, a) + f[2](f[1](c)) for f in ComponentToLine if f[3](a)
+            self.Color(f, arg) + f[2](f[1](arg)) for f in self.rules if f[3](self.params)
         ]
 
-    @staticmethod
-    def Signature(a):
+    def Signature(self):
         result = []
-        for f in ComponentToLine:
-            span = f[5](a)
+        for f in self.rules:
+            span = f[5](self.params)
             if span:
                 result += ['p' + b(span)]
         return '|' + '|'.join(result) + '|'
 
+    @staticmethod
+    def ForComponents(params):
+        return LineRenderer(ComponentToLine, params)
 
+    @staticmethod
+    def ForEmptyCVEs(params):
+        return LineRenderer(EmptyCVEToLine, params)
+
+
+EmptyCVEToLine = [
+    (
+        'Уязвимость',
+        lambda cve_and_getter: cve_and_getter[0].get_some_ids(3),
+        lambda s: column('', *list(map(protect, s))),
+        lambda a: '3cm',
+    ),
+    (
+        'Критичность',
+        lambda cve_and_getter: VulnerabilityGrade.full_severity(cve_and_getter[0].get_leading_grade()),
+        lambda s: protect(s),
+        lambda a: '2cm',
+    ),
+    (
+        'Компонент(ы)',
+        lambda cve_and_getter: filter(bool, map(cve_and_getter[1], cve_and_getter[0].components)),
+        lambda s: protect(s),
+        lambda a: '5cm',
+    ),
+    (
+        'Комментарий',
+        lambda cve_and_getter: (cve_and_getter[0].verdict_desc, cve_and_getter[0].verdict_stat),
+        lambda a: '7cm',
+    ),
+]
 
 
 
