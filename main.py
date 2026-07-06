@@ -1,4 +1,5 @@
 import argparse
+import sys
 from itertools import chain
 from pathlib import Path
 import subprocess
@@ -31,11 +32,14 @@ def argparse_init():
     parser.add_argument('--directive-depth', type=int, default=1, help='For ')
     parser.add_argument('-n', '--name', type=str, default='', help='Project main name (for title)')
     parser.add_argument('-s', '--subtitle-size', type=int, default=24, help='Set size for document subtitle font')
+    parser.add_argument('--intro-text', type=str, default='', help='Use to override default intro message')
 
     parser.add_argument('-S', '--review-attack-surface', action='count', help='Check CVEs for attack surface to have user reviews ("-R" for "yes", "-RR" for "yes" and "indirect")')
 
     parser.add_argument('--shame', action='store_true', help='Add color signals related to missing SBoM data')
     parser.add_argument('--add-os-skips', action='store_true', help='Connect all children of "operating-system" to their grandparent nodes. This feature enhances directive dependencies\' listings for OBoMs')
+    parser.add_argument('-N', '--add-name-clusters', action='store_true', help='Adds a new subsection in "Intro" that lists components with same name (something like "uniq -D" in Linux)')
+    parser.add_argument('--no-cmp', action='store_true', help='Remove section for components (does not affect "--add-name-clusters")')
     parser.add_argument('--no-cve', action='store_true', help='Remove CVE section')
     parser.add_argument('--no-gost', action='store_true', help='Remove all GOST properties')
     parser.add_argument('--no-obom', action='store_true', help='Drop all components with types: ' + ', '.join(DROP_OBOM))
@@ -44,11 +48,12 @@ def argparse_init():
     parser.add_argument('-D', '--all-directives', action='store_true', help='Disable "interesting" filter for directive components')
     parser.add_argument('-A', '--all-components', action='store_true', help='Disable "interesting" filter')
     parser.add_argument('-T', '--table-of-components', action='store_true', help='Write components in one huge table')
-    parser.add_argument('-x', '--compile-count', type=int, default=3, help='Use this with "--compile" to tamper with amount of compilation iterations (2-3 iterations are perfect, 3 is default)')
     parser.add_argument('--compile', action='store_true', help='Invoke latexmk to compile results')
+    parser.add_argument('-x', '--compile-count', type=int, default=3, help='Use this with "--compile" to tamper with amount of compilation iterations (2-3 iterations are perfect, 3 is default)')
     parser.add_argument('--use-arial', action='store_true', help='Use Arial font (if you have one on your machine)')
 
     parser.add_argument('-O', '--opinionated', action='store_true', help='Use author\'s favourite preset')
+    #parser.add_argument('-+', dest='include', type=Path, help='Include flags from file')
 
     add_to_title_help = [
         '"-t t" is reserved for SBoM timestamp',
@@ -59,6 +64,21 @@ def argparse_init():
         '"-t k" is reserved for document kind (components, vulnerabilities)',
     ]
     parser.add_argument('-t', '--add-to-title', type=str, action='append', help='Additional lines to write on title page. Flag can be used multiple times.' + '\n\t'.join([''] + add_to_title_help))
+
+    #new_argv = []
+    #for i, a in enumerate(sys.argv):
+    #    if a != '-+':
+    #        new_argv.append(a)
+    #        continue
+    #    if i == len(sys.argv) - 1:
+    #        continue
+    #    next_a = sys.argv[i + 1]
+    #    if not(cnt.is_file(next_a) and cnt.exists(next_a)):
+    #        print('Please do better with "-+" flag')
+    #        exit(123)
+    #    with open(next_a, 'r', encoding='utf-8'):
+    #        data
+
     return parser.parse_args()
 
 
@@ -76,7 +96,6 @@ if __name__ == '__main__':
 
     args.add_to_title = args.add_to_title or []
     if args.opinionated:
-        args.no_cve = False
         args.no_obom = False
         args.no_buzz = True
         if "d" not in args.add_to_title:
@@ -98,7 +117,7 @@ if __name__ == '__main__':
     grade = ''
     grade_name = ''
     grade_desc = ''
-    if args.review_attack_surface:
+    if args.review_attack_surface and not args.no_gost:
         types_ = ['yes'] + (['indirect'] if args.review_attack_surface > 1 else [])
         for cmp in sbom.iter_components():
             if cmp.gost_attack_surface in types_:
@@ -112,6 +131,7 @@ if __name__ == '__main__':
     grade_vec = tuple(map(tex_utils.protect, (grade, grade_name, grade_desc)))
 
     evaluator = sbom_lib.ComponentEstimator(args.provided_by_is_not_interesting, args.no_gost, int(args.all_directives) * args.directive_depth, args.all_components, args.shame)
+    encoder = sbom_to_tex.LineRenderer.ForComponents(args)
 
     project_name = sbom.root.name
     out_dir: Path = args.output
@@ -157,43 +177,66 @@ if __name__ == '__main__':
 
         f.write(report_boilerplate.TOP('Arial' if args.use_arial else 'DejaVu Sans'))
         f.write(title)
-        message = messages.intro_message(project_name, i, cve_max if is_cve else cmp_max, is_cve)
+        message = args.intro_text or messages.intro_message(project_name, i, cve_max if is_cve else cmp_max, is_cve)
         f.write(common_part_builder(tex_utils.protect(message)))
 
         if not args.split:
             break
 
-    # report: prepare components
-    encoder = sbom_to_tex.LineRenderer.ForComponents(args)
-    table_header = encoder.Header()
+    # report: component clusters
+    if args.add_name_clusters:
+        files[0].write('\n\\begin{landscape}\n\n')
+        files[0].write('\n\\section{Повторяющиеся имена компонентов}\n\n')
+        clusters = sbom.get_cmps_grouped_by_name()
+        is_empty = True
+        for name, cmps in clusters.items():
+            if len(cmps) <= 1:
+                continue
+            is_empty = False
+            files[0].write('\n\n\\subsection{' + tex_utils.protect(name) + '}\n\n')
+            files[0].write(sbom_to_tex.TableType.LONG(
+                [encoder.Header()] +
+                [encoder(cmp) for cmp in cmps],
+                encoder.Signature())
+            )
+        if is_empty:
+            files[0].write('Повторяющихся компонентов не обнаружено, все компоненты в SBoM уникальные\n\n')
+
+    # prepare components for report
     directive = [cmp for cmp in sbom.iter_components() if cmp.depth <= args.directive_depth and evaluator(cmp)]
     transitive = [cmp for cmp in sbom.iter_components() if cmp.depth > args.directive_depth and evaluator(cmp)]
     directive.sort(key=lambda c: c.depth)
     transitive.sort(key=lambda c: c.depth)
-    if args.table_of_components:
+    args.table_of_components = args.table_of_components and not args.no_cmp
+    if not args.table_of_components and args.add_name_clusters:
+        files[0].write('\n\\end{landscape}\n\n')
+    elif args.table_of_components and not args.add_name_clusters:
         files[0].write('\n\\begin{landscape}\n\n')
+    else:
+        files[0].write('\n\\newpage\n\n')
 
     # report: print components
-    for name, arr in [('Директивные', directive), ('Транзитивные', transitive)]:
-        if not arr:
-            continue
-        files[0].write('\n\\section{' + name + ' зависимости}\n\n')
-        if args.table_of_components:
-            files[0].write(sbom_to_tex.TableType.LONG(
-                [table_header] +
-                [encoder(cmp) for cmp in arr],
-                encoder.Signature())
-            )
-        else:
-            for cmp in arr:
-                files[0].write(sbom_to_tex.encode_component(cmp, args.no_gost, args.shame))
-                files[0].write(tex_utils.step())
-                files[0].write(tex_utils.step())
+    if not args.no_cmp:
+        for name, arr in [('Директивные', directive), ('Транзитивные', transitive)]:
+            if not arr:
+                continue
+            files[0].write('\n\\section{' + name + ' зависимости}\n\n')
+            if args.table_of_components:
+                files[0].write(sbom_to_tex.TableType.LONG(
+                    [encoder.Header()] +
+                    [encoder(cmp) for cmp in arr],
+                    encoder.Signature())
+                )
+            else:
+                for cmp in arr:
+                    files[0].write(sbom_to_tex.encode_component(cmp, args.no_gost, args.shame))
+                    files[0].write(tex_utils.step())
+                    files[0].write(tex_utils.step())
 
     # report: components outro
     if args.table_of_components:
         files[0].write('\n\\end{landscape}\n\n')
-    if skipped := evaluator.counted - evaluator.interesting:
+    if not args.no_cmp and (skipped := evaluator.counted - evaluator.interesting):
         files[0].write('\n\\section{Дополнительные сведения}\n\n')
         files[0].write('\\textit{Было пропущено ' + str(skipped) + ' компонентов, так как они не были сочтены достаточно примечательными для отображения в отчёте. Полные сведения о компонентах доступны в формате SBoM-файла, который рекомендуется запросить у авторов отчёта.}')
 
@@ -204,15 +247,16 @@ if __name__ == '__main__':
         vulns = [v for v in vulns if v.desc]
         empty = [v for v in vulns if not v.desc]
     cve_batches = split(vulns, args.split) if args.split else [vulns]
-    for batch, file in zip(cve_batches, files[1:]):
-        file.write('\n\\section{Уязвимости}\n\n')
-        for cve in batch:
-            file.write(sbom_to_tex.encode_vuln(cve, sbom.get_or_alias, args.shame))
-            file.write(tex_utils.step())
-            file.write(tex_utils.step())
+    if not args.no_cve:
+        for batch, file in zip(cve_batches, files[1:]):
+            file.write('\n\\section{Уязвимости}\n\n')
+            for cve in batch:
+                file.write(sbom_to_tex.encode_vuln(cve, sbom.get_or_alias, args.shame))
+                file.write(tex_utils.step())
+                file.write(tex_utils.step())
 
     # report: empty cves
-    if empty:
+    if empty and not args.no_cve:
         empty_printer = sbom_to_tex.LineRenderer.ForEmptyCVEs(args)
         f = files[-1]
         f.write('\n\\begin{landscape}\n\n')
@@ -240,4 +284,4 @@ if __name__ == '__main__':
             target = [str(filename) + '.tex']
             for i in range(count):
                 subprocess.run(cmd + target)
-            subprocess.run(['latexmk', '-c'] + target)
+            subprocess.run(['latexmk', '-c', '-output-directory='+str(args.output)] + target)

@@ -414,6 +414,12 @@ class SBoM:
     def __len__(self):
         return self.len_components() + self.len_vulnerabilities()
 
+    def get_cmps_grouped_by_name(self):
+        result: dict[str, list] = defaultdict(list)
+        for cmp in self.iter_components():
+            result[cmp.name].append(cmp)
+        return result
+
 
 def build_sbom_from_files(files, drop_types: list[str], dedup_strat=ComponentDedupPresets.default, skip_types: list[str] = None):
     sbom = SBoM(dedup_strat)

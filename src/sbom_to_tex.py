@@ -148,7 +148,7 @@ ComponentToLine = [
         lambda s: str(s),
         lambda a: not a.no_cve,
         lambda c, a: '' if not c.vulns else (ReportColors.HOT_PINK if (c.important and c.solved_vulns < c.vulns) else ReportColors.ORANGE),
-        lambda a: "1cm"
+        lambda a: "1cm" if not a.no_cve else ''
     ),
     (
         "Тип",
