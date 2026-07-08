@@ -250,6 +250,8 @@ if __name__ == '__main__':
     if not args.no_cve:
         for batch, file in zip(cve_batches, files[1:]):
             file.write('\n\\section{Уязвимости}\n\n')
+            if not batch:
+                file.write('В проекте не было найдено уязвимостей.\n\n')
             for cve in batch:
                 file.write(sbom_to_tex.encode_vuln(cve, sbom.get_or_alias, args.shame))
                 file.write(tex_utils.step())

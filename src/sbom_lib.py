@@ -115,7 +115,7 @@ class VulnerabilityGrade:
 
     @staticmethod
     def Empty():
-        return VulnerabilityGrade('7.5', 'sbom2tex', '', 'sbom2tex')
+        return VulnerabilityGrade('0', '???', '', '???')
 
     @staticmethod
     def FromJSON(j: dict):
@@ -129,6 +129,8 @@ class VulnerabilityGrade:
     def full_severity(self):
         if type(self) is not VulnerabilityGrade:
             '???'
+        if not self.score or not self.score.strip('0.'):
+            return self.severity
         return ' / '.join(filter(bool, (in_human(self.severity), self.score)))
 
 
