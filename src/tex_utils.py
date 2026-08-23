@@ -1,3 +1,4 @@
+from dataclasses import dataclass
 from enum import Enum
 import re as regexp
 
@@ -155,3 +156,26 @@ def cut_text(text: str, default: str):
     if len(result) == 0:
         result = [default]
     return result
+
+
+@dataclass
+class LandscapeStateManager:
+    desired: bool = False
+    actual: bool = False
+
+    def start(self):
+        self.desired = True
+        return self
+
+    def finish(self):
+        self.desired = False
+        return self
+
+    def print(self, default=''):
+        if self.desired == self.actual:
+            return default
+        self.actual = self.desired
+        if self.actual:
+            return '\n\\begin{landscape}\n\n'
+        else:
+            return '\n\\end{landscape}\n\n'
