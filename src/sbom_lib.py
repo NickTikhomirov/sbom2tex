@@ -15,6 +15,9 @@ SAFE_RESOLUTIONS = [
 ]
 
 VALID_GOST = ['yes', 'no', 'indirect']
+DROP_OBOM = ["operating-system", "container"]
+DROP_BUZZ = ["file", "cryptographic-asset"]
+
 
 @dataclass
 class Dull:

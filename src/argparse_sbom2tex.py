@@ -1,5 +1,7 @@
+from pathlib import Path
 import argparse
 
+from .sbom_lib import DROP_OBOM, DROP_BUZZ
 
 def init():
     parser = argparse.ArgumentParser(description='DependencyTrack PDF Report Client', formatter_class=argparse.RawTextHelpFormatter)
@@ -24,13 +26,15 @@ def init():
     parser.add_argument('--no-cve', action='store_true', help='Remove CVE section')
     parser.add_argument('--no-gost', action='store_true', help='Remove all GOST properties')
     parser.add_argument('--no-obom', action='store_true', help='Drop all components with types: ' + ', '.join(DROP_OBOM))
-    parser.add_argument('--no-buzz', action='store_true', help='Drop all components with types: ' + ', '.join(DROP_BUZZ))
+    parser.add_argument('--no-buzz', action='store_true', help='Disable Table of Contents')
+    parser.add_argument('--no-toc', action='store_true', help='Disable ' + ', '.join(DROP_BUZZ))
+    parser.add_argument('--fake-aux', action='store_true', help='Generates report.aux sufficient enough for good first-try title (default title is drawn with tikz so .aux is a must)')
     parser.add_argument('--no-advertisements', action='store_true', help='Disable "tools" subsection from intro section')
     parser.add_argument('-D', '--all-directives', action='store_true', help='Disable "interesting" filter for directive components')
     parser.add_argument('-A', '--all-components', action='store_true', help='Disable "interesting" filter')
     parser.add_argument('-T', '--table-of-components', action='store_true', help='Write components in one huge table')
     parser.add_argument('--compile', action='store_true', help='Invoke latexmk to compile results')
-    parser.add_argument('-x', '--compile-count', type=int, default=3, help='Use this with "--compile" to tamper with amount of compilation iterations (2-3 iterations are perfect, 3 is default)')
+    parser.add_argument('-x', '--compile-count', type=int, default=3, help='Use this with "--compile" to tamper with amount of compilation iterations (2-3 iterations are perfect, 3 is default). Advice: with "-x 1" also use "--no-toc" and "--fake-aux"')
     parser.add_argument('--use-arial', action='store_true', help='Use Arial font (if you have one on your machine)')
 
     parser.add_argument('-O', '--opinionated', action='store_true', help='Use author\'s favourite preset')
@@ -68,8 +72,6 @@ def tweak(args):
     if args.opinionated:
         args.no_obom = False
         args.no_buzz = True
-        if "d" not in args.add_to_title:
-            args.add_to_title = ["d"] + args.add_to_title
         if "N" not in args.add_to_title and args.split:
             args.add_to_title = ["N"] + args.add_to_title
         if "k" not in args.add_to_title:
@@ -80,6 +82,9 @@ def tweak(args):
         args.review_attack_surface = True
         if args.split:
             args.add_to_title = [a for a in args.add_to_title if a != 'N']
+        if args.compile_count == 1:
+            args.fake_aux = True
+            args.no_toc = True
 
     args.table_of_components = args.table_of_components and not args.no_cmp
 

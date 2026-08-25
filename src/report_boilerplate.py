@@ -19,7 +19,7 @@ def decode_line(line: str, timestamp: str = None):
     return line
 
 
-def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), no_gost: bool = False, no_advertisiments: bool = False):
+def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), no_gost: bool = False, no_advertisiments: bool = False, no_table_of_contents: bool = False):
     grade, grade_name, grade_desc = grade
     provided_by = sbom.get_provided_by()
     tail = r'''
@@ -88,8 +88,8 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), 
         for tool in sbom.tools:
             tail += encode_root(tool, 'Инструмент') + '\n\n'
 
-    return lambda identification: r'''
-\tableofcontents
+    return lambda identification: (r'''
+\tableofcontents''' if not no_table_of_contents else '') + r'''
 
 \newpage
 \section{Общие сведения}

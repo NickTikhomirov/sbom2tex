@@ -11,10 +11,9 @@ from src import sbom_to_tex
 from src import messages
 from src import os_helper as cnt
 from src import argparse_sbom2tex
+from src.sbom_lib import DROP_OBOM, DROP_BUZZ
 
 
-DROP_OBOM = ["operating-system", "container"]
-DROP_BUZZ = ["file", "cryptographic-asset"]
 
 
 def split(array: list, batchsize: int):
@@ -61,7 +60,7 @@ if __name__ == '__main__':
     files = []
     filenames = []
     quick_open = lambda x: open(x, 'w', encoding='utf-8')
-    common_part_builder = report_boilerplate.make_common_builder(sbom, grade_vec, args.no_gost, args.no_advertisements)
+    common_part_builder = report_boilerplate.make_common_builder(sbom, grade_vec, args.no_gost, args.no_advertisements, args.no_toc)
     landscape = tex_utils.LandscapeStateManager()
 
     cve_max = 0
@@ -189,6 +188,12 @@ if __name__ == '__main__':
         f.write(sbom_to_tex.TableType.
                 LONG([['Уязвимость', 'Критичность', 'Компонент(ы)', 'Комментарий']], '|p[]|p[]|p[]|p[]|'))
         f.write(landscape.finish().print())
+
+    if args.fake_aux:
+        for fname in filenames:
+            with open(str(fname) + '.aux', 'w', encoding='utf-8') as f:
+                f.write('\\relax \n')
+                f.write('\\pgfsyspdfmark {pgfid1}{4909007}{50865199}\n')
 
     # report: finalize
     for f in files:
