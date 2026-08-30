@@ -1,6 +1,7 @@
 from dataclasses import dataclass
 from copy import copy
 from enum import Enum
+from typing import Iterable
 
 from .tex_utils import cut_text, ReportColors, protect, in_small, b, Г, protect_but_better
 
@@ -34,8 +35,6 @@ class Cell:
         if type(self) != Cell:
             return self
         return self.data
-
-
 
     def __call__(self, new_data: str):
         result = copy(self)
@@ -82,7 +81,7 @@ class Cell:
         result = r'\strut{}' + b(result)
 
         args_1 = []
-        args_2 = []
+        args_2 = ['valign=m']
 
         if self.multi_size:
             args_1 += [f"{'r' if self.is_multirow else 'c'}={self.multi_size}"]
@@ -151,13 +150,15 @@ class TableType(Enum):
             TableType.FLEXIBLE: Cell.render_longtblr,
         }.get(self) or Cell.render_classic
 
-    def __call__(self, contents: list[list | tuple | Cell], signature: str | int):
+    def __call__(self, contents: list[list | tuple | Cell], signature: str | int, add_header: bool = False):
         if type(signature) == int:
             signature = '|' + ('c|' * signature)
         result = r'''
     \begin{''' + self.value + '}{' + signature + r'''}
     \hline
     '''
+        if self != TableType.LONG:
+            add_header = False
         render = self.get_cell_render()
         for line in contents:
             if not line: continue
@@ -181,6 +182,9 @@ class TableType(Enum):
                 result += r'\hline '
             else:
                 result += ' '.join(r'\cline{' + f'{r[0]}-{r[1]}' + '}' for r in ranges)
+            if add_header:
+                result += '\endhead '
+                add_header = False
 
         result += r'''
     \end{''' + self.value + '}'
@@ -188,7 +192,8 @@ class TableType(Enum):
         return result
 
 
-def column(first: str, *lines: str):
+def column(first: str, lines: Iterable[str]):
+    lines = list(lines)
     if len(lines) == 0:
         return ''
     return r'''

@@ -1,7 +1,8 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections import deque, defaultdict
 from itertools import filterfalse, chain
 import json
+
 
 from .tex_utils import in_human
 
@@ -148,6 +149,7 @@ class Vulnerability:
     recommendation: str
     components: tuple[str]
     own_bomref: str | None
+    bdus: tuple[str] = field(default_factory=tuple)
 
     def get_leading_grade(self) -> VulnerabilityGrade:
         if len(self.grades) == 1:

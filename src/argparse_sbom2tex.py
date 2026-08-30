@@ -1,7 +1,38 @@
+import shlex
+import sys
 from pathlib import Path
 import argparse
 
 from .sbom_lib import DROP_OBOM, DROP_BUZZ
+
+
+def read_args_from_file(filename):
+    with open(filename, 'r', encoding='utf-8') as f:
+        flags = ' '.join(f)
+        return shlex.split(flags)
+
+
+def process_flags_with_minus_plus(flags: list[str]):
+    if '-+' not in flags:
+        return flags
+
+    new_args_raw = []
+    is_flag_file = False
+    for arg in flags:
+        if arg == '-+':
+            is_flag_file = True
+            continue
+        if is_flag_file:
+            flags_from_file = read_args_from_file(arg)
+            if '-+' in flags_from_file:
+                raise RuntimeError(f'Found nested "-+" at file {arg}')
+            new_args_raw.extend(flags_from_file)
+            is_flag_file = False
+            continue
+        new_args_raw.append(arg)
+
+    return new_args_raw
+
 
 def init():
     parser = argparse.ArgumentParser(description='DependencyTrack PDF Report Client', formatter_class=argparse.RawTextHelpFormatter)
@@ -9,8 +40,6 @@ def init():
     parser.add_argument('-o', '--output', default='.', type=Path, help='Directory to store result')
     parser.add_argument('--split', type=int, default=0, help='Split threshold (0 for no split, >19 otherwise)')
     parser.add_argument('--provided-by-is-not-interesting', action='store_true', help='By default all "GOST:provided_by" are considered worth mentioning. Use the flag to override.')
-    parser.add_argument('--separate-empty-cves', action='store_true', help='Separate CVEs without description to separate section')
-    parser.add_argument('--empty-desc', type=str, default='Некоторые инструменты/базы помечают таким образом вышедшие обновления безопасности для компонентов', help='Use with "--separate-empty-cves" to add a section commentary')
 
     parser.add_argument('--directive-depth', type=int, default=1, help='For ')
     parser.add_argument('-n', '--name', type=str, default='', help='Project main name (for title)')
@@ -26,8 +55,8 @@ def init():
     parser.add_argument('--no-cve', action='store_true', help='Remove CVE section')
     parser.add_argument('--no-gost', action='store_true', help='Remove all GOST properties')
     parser.add_argument('--no-obom', action='store_true', help='Drop all components with types: ' + ', '.join(DROP_OBOM))
-    parser.add_argument('--no-buzz', action='store_true', help='Disable Table of Contents')
-    parser.add_argument('--no-toc', action='store_true', help='Disable ' + ', '.join(DROP_BUZZ))
+    parser.add_argument('--no-toc', action='store_true', help='Disable Table of Contents')
+    parser.add_argument('--no-buzz', action='store_true', help='Disable ' + ', '.join(DROP_BUZZ))
     parser.add_argument('--fake-aux', action='store_true', help='Generates report.aux sufficient enough for good first-try title (default title is drawn with tikz so .aux is a must)')
     parser.add_argument('--no-advertisements', action='store_true', help='Disable "tools" subsection from intro section')
     parser.add_argument('-D', '--all-directives', action='store_true', help='Disable "interesting" filter for directive components')
@@ -36,6 +65,7 @@ def init():
     parser.add_argument('--compile', action='store_true', help='Invoke latexmk to compile results')
     parser.add_argument('-x', '--compile-count', type=int, default=3, help='Use this with "--compile" to tamper with amount of compilation iterations (2-3 iterations are perfect, 3 is default). Advice: with "-x 1" also use "--no-toc" and "--fake-aux"')
     parser.add_argument('--use-arial', action='store_true', help='Use Arial font (if you have one on your machine)')
+    parser.add_argument('--enrich-bdu-web', action='count', help='Enrich CVEs with BDU-WEB (FSTEC) based on related CWEs. Use flag twice to take full CWE graph into consideration')
 
     parser.add_argument('-O', '--opinionated', action='store_true', help='Use author\'s favourite preset')
     #parser.add_argument('-+', dest='include', type=Path, help='Include flags from file')
@@ -50,21 +80,7 @@ def init():
     ]
     parser.add_argument('-t', '--add-to-title', type=str, action='append', help='Additional lines to write on title page. Flag can be used multiple times.' + '\n\t'.join([''] + add_to_title_help))
 
-    #new_argv = []
-    #for i, a in enumerate(sys.argv):
-    #    if a != '-+':
-    #        new_argv.append(a)
-    #        continue
-    #    if i == len(sys.argv) - 1:
-    #        continue
-    #    next_a = sys.argv[i + 1]
-    #    if not(cnt.is_file(next_a) and cnt.exists(next_a)):
-    #        print('Please do better with "-+" flag')
-    #        exit(123)
-    #    with open(next_a, 'r', encoding='utf-8'):
-    #        data
-
-    return parser.parse_args()
+    return parser.parse_args(process_flags_with_minus_plus(sys.argv[1:]))
 
 
 def tweak(args):

@@ -79,7 +79,7 @@ def encode_vuln(vuln: Vulnerability, get_component, shame: bool):
         ],
         [
             PREMADE_CELL_BREAKABLE(vuln.desc),
-            PREMADE_CELL_GRAY(column('Имена', *map(in_small, map(protect, vuln.ids_)))).set(multi_size=1, pattern='c|'),
+            PREMADE_CELL_GRAY(column('Имена', map(in_small, map(protect, vuln.ids_)))).set(multi_size=1, pattern='c|'),
         ],
 
         [
@@ -91,7 +91,9 @@ def encode_vuln(vuln: Vulnerability, get_component, shame: bool):
                 '\\strut{}' + box('0.\\textwidth', 'Затронуты:', True) if any(components_as_text) else 'Затронутые компоненты отсутствуют!',
                 *[box('0.7\\textwidth', c) for c in components_as_text]
             )), color=ReportColors.LOW_ORANGE),
-            multicolumn(1, 'c|', column('CWEs', *map(protect, map(lambda x: f'CWE-{x}', vuln.cwes))), color=ReportColors.NEUTRAL_RED),
+            multicolumn(1, 'c|',
+                        column('CWEs', map(protect, map(lambda x: f'CWE-{x}', vuln.cwes))) +
+                        column('BDU Web', map(protect, map(lambda x: f'BDU:W0{x}', vuln.bdus))), color=ReportColors.NEUTRAL_RED),
         ],
 
         [
@@ -227,7 +229,7 @@ EmptyCVEToLine = [
     (
         'Уязвимость',
         lambda cve_and_getter: cve_and_getter[0].get_some_ids(3),
-        lambda s: column('', *list(map(protect, s))),
+        lambda s: column('', map(protect, s)),
         lambda a: '3cm',
     ),
     (

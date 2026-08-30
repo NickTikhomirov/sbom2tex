@@ -11,8 +11,8 @@ from src import sbom_to_tex
 from src import messages
 from src import os_helper as cnt
 from src import argparse_sbom2tex
+from src import bdu_mappings
 from src.sbom_lib import DROP_OBOM, DROP_BUZZ
-
 
 
 
@@ -65,6 +65,11 @@ if __name__ == '__main__':
 
     cve_max = 0
     cmp_max = 0
+
+    if not args.no_cve and args.enrich_bdu_web and sbom.vulnerabilities:
+        dict_base = bdu_mappings.BDU_MAPPINGS if args.enrich_bdu_web == 1 else bdu_mappings.BDU_MAPPINGS_WITH_CHILDREN
+        for cve in sbom.vulnerabilities:
+            cve.bdus = tuple(bdu_mappings.get_mapping(dict_base, *cve.cwes))
 
     if not args.split:    # single file
         filenames += [str(out_dir.joinpath(f'report'))]
@@ -146,7 +151,7 @@ if __name__ == '__main__':
                 files[0].write(sbom_to_tex.TableType.LONG(
                     [encoder.Header()] +
                     [encoder(cmp) for cmp in arr],
-                    encoder.Signature())
+                    encoder.Signature(), add_header=True)
                 )
             else:
                 for cmp in arr:
@@ -161,12 +166,7 @@ if __name__ == '__main__':
         files[0].write('\\textit{Было пропущено ' + str(skipped) + ' компонентов, так как они не были сочтены достаточно примечательными для отображения в отчёте. Полные сведения о компонентах доступны в формате SBoM-файла, который рекомендуется запросить у авторов отчёта.}')
 
     # report: print cves
-    vulns = sbom.vulnerabilities
-    empty = []  # for empty vulns
-    if args.separate_empty_cves:
-        vulns = [v for v in vulns if v.desc]
-        empty = [v for v in vulns if not v.desc]
-    cve_batches = split(vulns, args.split) if args.split else [vulns]
+    cve_batches = split(sbom.vulnerabilities, args.split) if args.split else [sbom.vulnerabilities]
     if not args.no_cve:
         for batch, file in zip(cve_batches, files[1:]):
             file.write('\n\\section{Уязвимости}\n\n')
@@ -176,18 +176,6 @@ if __name__ == '__main__':
                 file.write(sbom_to_tex.encode_vuln(cve, sbom.get_or_alias, args.shame))
                 file.write(tex_utils.step())
                 file.write(tex_utils.step())
-
-    # report: empty cves
-    if empty and not args.no_cve:
-        empty_printer = sbom_to_tex.LineRenderer.ForEmptyCVEs(args)
-        f = files[-1]
-        f.write(landscape.start().print())
-        f.write('\n\\section{Уязвимости без описания}\n\n')
-        if desc := str(args.empty_desc).strip():
-            f.write(tex_utils.protect(desc) + '\n\n')
-        f.write(sbom_to_tex.TableType.
-                LONG([['Уязвимость', 'Критичность', 'Компонент(ы)', 'Комментарий']], '|p[]|p[]|p[]|p[]|'))
-        f.write(landscape.finish().print())
 
     if args.fake_aux:
         for fname in filenames:
