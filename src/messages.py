@@ -10,5 +10,5 @@ def intro_message(n, i, imax, is_cve):
         one, another = another, one
     chapter = f' (файл {i} из {imax})' if imax != 0 else ''
 
-    return f'Это отчёт {one} проекта {n}{chapter}. Сведения {another} приведены в отдельном отчёте.'\
+    return f'Это отчёт {one} проекта {n}{chapter}. Сведения {another} приведены в отдельном отчёте. '\
            'Разделение отчётов было осуществлено для повышения читаемости.'

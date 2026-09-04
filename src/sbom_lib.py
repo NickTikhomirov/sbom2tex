@@ -1,8 +1,10 @@
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from collections import deque, defaultdict
 from itertools import filterfalse, chain
 import json
 
+
+from .tex_utils import in_human
 
 ALOT = 99999999999
 
@@ -14,6 +16,9 @@ SAFE_RESOLUTIONS = [
 ]
 
 VALID_GOST = ['yes', 'no', 'indirect']
+DROP_OBOM = ["operating-system", "container"]
+DROP_BUZZ = ["file", "cryptographic-asset"]
+
 
 @dataclass
 class Dull:
@@ -114,7 +119,7 @@ class VulnerabilityGrade:
 
     @staticmethod
     def Empty():
-        return VulnerabilityGrade('7.5', 'sbom2tex', '', 'sbom2tex')
+        return VulnerabilityGrade('0', '???', '', '???')
 
     @staticmethod
     def FromJSON(j: dict):
@@ -125,6 +130,12 @@ class VulnerabilityGrade:
             src=j.get('source', dict()).get('name') or ''
         )
 
+    def full_severity(self):
+        if type(self) is not VulnerabilityGrade:
+            '???'
+        if not self.score or not self.score.strip('0.'):
+            return self.severity
+        return ' / '.join(filter(bool, (in_human(self.severity), self.score)))
 
 
 @dataclass
@@ -138,6 +149,7 @@ class Vulnerability:
     recommendation: str
     components: tuple[str]
     own_bomref: str | None
+    bdus: tuple[str] = field(default_factory=tuple)
 
     def get_leading_grade(self) -> VulnerabilityGrade:
         if len(self.grades) == 1:
@@ -161,6 +173,11 @@ class Vulnerability:
             if i.startswith('BDU-'):
                 return i
         return self.ids_[0]
+
+    def get_some_ids(self, count: int):
+        main_ = self.main_id
+        all_ids = [main_] + list(set(self.ids_) - {main_})
+        return all_ids[:count]
 
     @staticmethod
     def IdVectorFromJSON(j: dict):
@@ -246,6 +263,14 @@ class SBoM:
         for cmp in self.iter_components():
             if cmp.gost_provided_by:
                 result[cmp.gost_provided_by] += 1
+        return result
+
+    def get_langs(self):
+        result: dict[str, int] = defaultdict(int)
+        for cmp in self.iter_components():
+            for lang in cmp.langs_as_list:
+                if not lang: continue
+                result[lang] += 1
         return result
 
     def add_component(self, c: Component):
@@ -395,6 +420,12 @@ class SBoM:
 
     def __len__(self):
         return self.len_components() + self.len_vulnerabilities()
+
+    def get_cmps_grouped_by_name(self):
+        result: dict[str, list] = defaultdict(list)
+        for cmp in self.iter_components():
+            result[cmp.name].append(cmp)
+        return result
 
 
 def build_sbom_from_files(files, drop_types: list[str], dedup_strat=ComponentDedupPresets.default, skip_types: list[str] = None):

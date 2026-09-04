@@ -1,5 +1,6 @@
+from dataclasses import dataclass
 from enum import Enum
-
+import re as regexp
 
 class ReportColors(Enum):
     LOW_ORANGE = "FFF2CC"
@@ -69,8 +70,23 @@ def protect(string: str | object):
     string = string.translate(translations)
     for symbol in '_#$&%':
         string = string.replace(symbol, '\\' + symbol)
+    for symbol in '<->':
+        string = string.replace(symbol, symbol + '{}')
     string = string.replace('"', r'\textquotedbl{}')
     return string
+
+
+def protect_but_better(text: str):
+    tokens = regexp.split(r"(\s+)", text)
+
+    def protect_token(token: str):
+        protected = protect(token)
+        if len(token) > 28:
+            protected = '\\seqsplit{' + protected + '}'
+        return protected
+
+    tokens = [protect_token(t) for t in tokens]
+    return ''.join(tokens)
 
 
 def url(string: str | object):
@@ -140,3 +156,26 @@ def cut_text(text: str, default: str):
     if len(result) == 0:
         result = [default]
     return result
+
+
+@dataclass
+class LandscapeStateManager:
+    desired: bool = False
+    actual: bool = False
+
+    def start(self):
+        self.desired = True
+        return self
+
+    def finish(self):
+        self.desired = False
+        return self
+
+    def print(self, default=''):
+        if self.desired == self.actual:
+            return default
+        self.actual = self.desired
+        if self.actual:
+            return '\n\\begin{landscape}\n\n'
+        else:
+            return '\n\\end{landscape}\n\n'

@@ -2,7 +2,7 @@ from datetime import datetime
 
 from .sbom_lib import SBoM
 from .sbom_to_tex import encode_root
-from .tex_table import TableType, multirow, multicolumn
+from .tex_table import TableType, multirow, multicolumn, PREMADE_CELL_BOLD
 from .tex_utils import protect, box, ReportColors
 from .title.title import add_title_page
 
@@ -19,7 +19,7 @@ def decode_line(line: str, timestamp: str = None):
     return line
 
 
-def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), no_gost: bool = False):
+def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), no_gost: bool = False, no_advertisiments: bool = False, no_table_of_contents: bool = False):
     grade, grade_name, grade_desc = grade
     provided_by = sbom.get_provided_by()
     tail = r'''
@@ -46,16 +46,17 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), 
         (((2, 3),), ['', '(no)', sbom.count_property_by_value('sf', 'no')]),
         ['', '(incorrect)', sbom.count_property_by_value('sf', 'TODO')],
         [multicolumn(2, '|l|','Число компонентов типа "{}container"{}'), sbom.count_containers()],
-        [multicolumn(2, '|l|','Языки проекта'), box('7cm', ', '.join(sorted(sbom.all_languages())))],
+        [multicolumn(2, '|l|','Языки проекта'), box('7cm', '\\strut{}' + ', '.join(sorted(sbom.all_languages())))],
     ] if not no_gost else []) + ([
         [multicolumn(2, '|l|', grade_name), grade]]
         if grade else []), "|l|c|c|") + r'''
 
 \end{center}
 
-''' + (grade_desc if grade else '') + r'''
+''' + (grade_desc if grade else '')
 
-''' + (r'''
+    if sbom.get_provided_by():
+        tail += r'''
 
 \subsection{Источники компонентов (GOST:provided\_by)}
 
@@ -63,9 +64,22 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), 
 ''' + '\n'.join(f'    \\item {protect(kv[0])} ({protect(kv[1])} компонентов)' for kv in provided_by.items()) + r'''
 \end{itemize}
 
-''' if sbom.get_provided_by() else '')
+'''
 
-    if sbom.tools:
+    if any(langs := sbom.get_langs()):
+        langs = list(map(list, sorted(langs.items(), key=lambda x: x[1], reverse=True)))
+        tail += r'''
+
+\subsection{Языки программирования проекта}
+
+При генерации настоящего документа в перечень языков не внедрялось маркеров вида <<Язык неизвестен>> и подобных.
+Все позиции в списке взяты из исходных файлов.
+
+Если для какого-либо компонента было указано несколько языков, то он будет посчитан в нескольких строках таблицы. 
+
+''' + TableType.LONG([[PREMADE_CELL_BOLD("Язык"), PREMADE_CELL_BOLD("Кол")]] + langs, 2)
+
+    if sbom.tools and not no_advertisiments:
         tail += r'''
 
 \subsection{Инструменты генерации SBoM}
@@ -74,8 +88,8 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), 
         for tool in sbom.tools:
             tail += encode_root(tool, 'Инструмент') + '\n\n'
 
-    return lambda identification: r'''
-\tableofcontents
+    return lambda identification: (r'''
+\tableofcontents''' if not no_table_of_contents else '') + r'''
 
 \newpage
 \section{Общие сведения}
@@ -83,17 +97,11 @@ def make_common_builder(sbom: SBoM, grade: tuple[str, str, str] = ('', '', ''), 
 ''' + identification + tail
 
 
-TOP = lambda font: r'''% !TEX program =XeLaTeX
+TOP = lambda font: r'''% !TEX program = XeLaTeX
 \documentclass[12pt, a4paper]{article}
 
-\special{dvipdfmx:config C 0x0010} 
-
-\usepackage[utf8]{inputenc}
 \usepackage[russian, english]{babel}
 \usepackage[table,xcdraw]{xcolor}
-\usepackage{anyfontsize}
-\usepackage{setspace}
-\usepackage{textcomp}
 \usepackage{multirow}
 \usepackage{multicol}
 \usepackage{xurl}
@@ -111,8 +119,6 @@ TOP = lambda font: r'''% !TEX program =XeLaTeX
 \usetikzlibrary{decorations.pathmorphing}
 
 \SetTblrTemplate{head,foot}{empty}
-\usepackage{amsmath}
-\usepackage{amsfonts}
 \usepackage{pdflscape}
 
 \usepackage[hidelinks]{hyperref}

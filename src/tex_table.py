@@ -1,8 +1,9 @@
 from dataclasses import dataclass
 from copy import copy
 from enum import Enum
+from typing import Iterable
 
-from .tex_utils import htmlcolor, cut_text, ReportColors, protect, in_small, b, Г
+from .tex_utils import cut_text, ReportColors, protect, in_small, b, Г, protect_but_better
 
 
 @dataclass
@@ -16,6 +17,14 @@ class Cell:
     pattern: str = ''
     is_multirow: bool = False
     multi_size: int = 0
+    bold: bool = False
+
+    def set(self, **kwargs):
+        for k, v in kwargs.items():
+            if k not in dir(self):
+                continue
+            self.__setattr__(k, v)
+        return self
 
     def check_huge(self):
         if type(self) != Cell:
@@ -26,11 +35,6 @@ class Cell:
         if type(self) != Cell:
             return self
         return self.data
-
-    def set(self, **kwargs):
-        if color := kwargs.get('color'):
-            self.color = color
-        return self
 
     def __call__(self, new_data: str):
         result = copy(self)
@@ -43,7 +47,11 @@ class Cell:
 
         result = self.data
         if self.unprotected:
-            result = protect(result)
+            protector = protect_but_better if self.can_be_huge else protect
+            result = protector(result)
+
+        if self.bold:
+            result = f'\\textbf{b(result)}'
 
         if self.small_font:
             result = in_small(self.data)
@@ -64,12 +72,16 @@ class Cell:
 
         result = self.data
         if self.unprotected:
-            result = protect(result)
+            protector = protect_but_better if self.can_be_huge else protect
+            result = protector(result)
+
+        if self.bold:
+            result = f'\\textbf{b(result)}'
 
         result = r'\strut{}' + b(result)
 
         args_1 = []
-        args_2 = []
+        args_2 = ['valign=m']
 
         if self.multi_size:
             args_1 += [f"{'r' if self.is_multirow else 'c'}={self.multi_size}"]
@@ -106,9 +118,9 @@ class Line:
         return result + '\n'
 
 
-
 PREMADE_CELL_BREAKABLE = Cell('', can_be_huge=True, small_font=True, unprotected=True)
 PREMADE_CELL_GRAY = Cell('', color=ReportColors.GRAY_BACKGROUND)
+PREMADE_CELL_BOLD = Cell('', bold=True)
 
 
 def multirow(size: int, text: str, color: ReportColors = None):
@@ -138,13 +150,15 @@ class TableType(Enum):
             TableType.FLEXIBLE: Cell.render_longtblr,
         }.get(self) or Cell.render_classic
 
-    def __call__(self, contents: list[list | tuple | Cell], signature: str | int):
+    def __call__(self, contents: list[list | tuple | Cell], signature: str | int, add_header: bool = False):
         if type(signature) == int:
             signature = '|' + ('c|' * signature)
         result = r'''
     \begin{''' + self.value + '}{' + signature + r'''}
     \hline
     '''
+        if self != TableType.LONG:
+            add_header = False
         render = self.get_cell_render()
         for line in contents:
             if not line: continue
@@ -168,13 +182,18 @@ class TableType(Enum):
                 result += r'\hline '
             else:
                 result += ' '.join(r'\cline{' + f'{r[0]}-{r[1]}' + '}' for r in ranges)
+            if add_header:
+                result += '\endhead '
+                add_header = False
 
         result += r'''
     \end{''' + self.value + '}'
 
         return result
 
-def column(first: str, *lines: str):
+
+def column(first: str, lines: Iterable[str]):
+    lines = list(lines)
     if len(lines) == 0:
         return ''
     return r'''
